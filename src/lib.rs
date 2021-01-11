@@ -47,10 +47,12 @@ pub fn start() -> Result<(), JsValue> {
         r#"
         // attribute vec4 position;
         attribute vec4 vertexData; // <vec2 position, vec2 texCoords>
+        uniform float angle;
         varying vec2 texCoords;
         void main() {
             // gl_Position = position;
-            gl_Position = vec4(vertexData.xy, 0.0, 1.0);
+            mat4 rotate = mat4(cos(angle), sin(angle), 0, 0, -sin(angle), cos(angle), 0, 0, 0, 0, 1, 0, 0,0,0,1);
+            gl_Position = rotate * vec4(vertexData.xy, 0.0, 1.0);
 
             texCoords = vertexData.xy * 5.;
         }
@@ -76,16 +78,19 @@ pub fn start() -> Result<(), JsValue> {
     let program = link_program(&context, &vert_shader, &frag_shader)?;
     context.use_program(Some(&program));
 
-    let loc = context.get_uniform_location(&program, "texture");
-    console_log!("loc: {}", loc.is_some());
+    let texture_loc = context.get_uniform_location(&program, "texture");
+    console_log!("texture_loc: {}", texture_loc.is_some());
     let texture = load_texture(&context, "./assets/enemy.png")?;
+
+    let angle_loc = context.get_uniform_location(&program, "angle");
+    console_log!("angle_loc: {}", angle_loc.is_some());
 
     // Tell WebGL we want to affect texture unit 0
     context.active_texture(WebGlRenderingContext::TEXTURE0);
 
     // Bind the texture to texture unit 0
     context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*texture));
-    context.uniform1i(loc.as_ref(), 0);
+    context.uniform1i(texture_loc.as_ref(), 0);
 
     let vertices: [f32; 9] = [-0.7, -0.7, 0.0, 0.7, -0.7, 0.0, 0.0, 0.7, 0.0];
 
@@ -133,7 +138,7 @@ pub fn start() -> Result<(), JsValue> {
 
     let mut i = 0;
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
-        if i > 300 {
+        if i > 300000 {
             console_log!("All done!");
 
             // Drop our handle to this closure so that it will get cleaned
@@ -146,6 +151,7 @@ pub fn start() -> Result<(), JsValue> {
         // requestAnimationFrame callback has fired.
         i += 1;
         console_log!("requestAnimationFrame has been called {} times.", i);
+        context.uniform1f(angle_loc.as_ref(), i as f32 * std::f32::consts::PI / 180.);
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
         context.draw_arrays(

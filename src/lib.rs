@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlImageElement, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture};
+use web_sys::{HtmlImageElement, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlBuffer, WebGlTexture};
 
 macro_rules! console_log {
     ($fmt:expr, $($arg1:expr),*) => {
@@ -69,9 +69,8 @@ pub fn start() -> Result<(), JsValue> {
         uniform sampler2D texture;
 
         void main() {
-            // gl_FragColor = vec4(0.5, 1.0, 1.0, 1.0);
-            gl_FragColor = texture2D( texture, vec2(texCoords.x, texCoords.y) );
-            // gl_FragColor = texture2D( texture, vec2(0.5, 0.5) );
+            vec4 texColor = texture2D( texture, vec2(texCoords.x, texCoords.y) );
+            gl_FragColor = texColor;
         }
     "#,
     )?;
@@ -92,28 +91,39 @@ pub fn start() -> Result<(), JsValue> {
     context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*texture));
     context.uniform1i(texture_loc.as_ref(), 0);
 
+    context.enable(WebGlRenderingContext::BLEND);
+    context.blend_equation(WebGlRenderingContext::FUNC_ADD);
+    context.blend_func(WebGlRenderingContext::SRC_ALPHA, WebGlRenderingContext::ONE_MINUS_SRC_ALPHA);
+
     let vertices: [f32; 9] = [-0.7, -0.7, 0.0, 0.7, -0.7, 0.0, 0.0, 0.7, 0.0];
+    let vertices2: [f32; 12] = [ 0.5,  0.5, 0.0, -0.5,  0.5, 0.0, -0.5, -0.5, 0.0, 0.5, -0.5, 0.0];
 
-    let buffer = context.create_buffer().ok_or("failed to create buffer")?;
-    context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&buffer));
+    let vertex_buffer_data = |vertices: &[f32]| -> Result<WebGlBuffer, JsValue> {
+        let buffer = context.create_buffer().ok_or("failed to create buffer")?;
+        context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&buffer));
 
-    // Note that `Float32Array::view` is somewhat dangerous (hence the
-    // `unsafe`!). This is creating a raw view into our module's
-    // `WebAssembly.Memory` buffer, but if we allocate more pages for ourself
-    // (aka do a memory allocation in Rust) it'll cause the buffer to change,
-    // causing the `Float32Array` to be invalid.
-    //
-    // As a result, after `Float32Array::view` we have to be very careful not to
-    // do any memory allocations before it's dropped.
-    unsafe {
-        let vert_array = js_sys::Float32Array::view(&vertices);
+        // Note that `Float32Array::view` is somewhat dangerous (hence the
+        // `unsafe`!). This is creating a raw view into our module's
+        // `WebAssembly.Memory` buffer, but if we allocate more pages for ourself
+        // (aka do a memory allocation in Rust) it'll cause the buffer to change,
+        // causing the `Float32Array` to be invalid.
+        //
+        // As a result, after `Float32Array::view` we have to be very careful not to
+        // do any memory allocations before it's dropped.
+        unsafe {
+            let vert_array = js_sys::Float32Array::view(&vertices);
 
-        context.buffer_data_with_array_buffer_view(
-            WebGlRenderingContext::ARRAY_BUFFER,
-            &vert_array,
-            WebGlRenderingContext::STATIC_DRAW,
-        );
-    }
+            context.buffer_data_with_array_buffer_view(
+                WebGlRenderingContext::ARRAY_BUFFER,
+                &vert_array,
+                WebGlRenderingContext::STATIC_DRAW,
+            );
+        }
+        Ok(buffer)
+    };
+
+    let buffer = vertex_buffer_data(&vertices)?;
+    let buffer2 = vertex_buffer_data(&vertices2)?;
 
     context.vertex_attrib_pointer_with_i32(0, 3, WebGlRenderingContext::FLOAT, false, 0, 0);
     context.enable_vertex_attrib_array(0);
@@ -154,10 +164,19 @@ pub fn start() -> Result<(), JsValue> {
         context.uniform1f(angle_loc.as_ref(), i as f32 * std::f32::consts::PI / 180.);
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
+        context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&buffer));
         context.draw_arrays(
-            WebGlRenderingContext::TRIANGLES,
+            WebGlRenderingContext::TRIANGLE_FAN,
             0,
-            (vertices.len() / 3) as i32,
+            (vertices2.len() / 3) as i32,
+        );
+
+        context.uniform1f(angle_loc.as_ref(), -i as f32 * std::f32::consts::PI / 180.);
+        context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&buffer2));
+        context.draw_arrays(
+            WebGlRenderingContext::TRIANGLE_FAN,
+            0,
+            (vertices2.len() / 3) as i32,
         );
 
         // Schedule ourself for another requestAnimationFrame callback.

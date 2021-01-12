@@ -46,7 +46,7 @@ pub fn start() -> Result<(), JsValue> {
         WebGlRenderingContext::VERTEX_SHADER,
         r#"
         // attribute vec4 position;
-        attribute vec4 vertexData; // <vec2 position, vec2 texCoords>
+        attribute vec3 vertexData; // <vec2 position, vec2 texCoords>
         uniform float angle;
         varying vec2 texCoords;
         void main() {
@@ -95,6 +95,9 @@ pub fn start() -> Result<(), JsValue> {
     context.blend_equation(WebGlRenderingContext::FUNC_ADD);
     context.blend_func(WebGlRenderingContext::SRC_ALPHA, WebGlRenderingContext::ONE_MINUS_SRC_ALPHA);
 
+    let vertex_position = context.get_attrib_location(&program, "vertexData") as u32;
+    console_log!("vertex_position: {}", vertex_position);
+
     let vertices: [f32; 9] = [-0.7, -0.7, 0.0, 0.7, -0.7, 0.0, 0.0, 0.7, 0.0];
     let vertices2: [f32; 12] = [ 0.5,  0.5, 0.0, -0.5,  0.5, 0.0, -0.5, -0.5, 0.0, 0.5, -0.5, 0.0];
 
@@ -111,7 +114,7 @@ pub fn start() -> Result<(), JsValue> {
         // As a result, after `Float32Array::view` we have to be very careful not to
         // do any memory allocations before it's dropped.
         unsafe {
-            let vert_array = js_sys::Float32Array::view(&vertices);
+            let vert_array = js_sys::Float32Array::view(vertices);
 
             context.buffer_data_with_array_buffer_view(
                 WebGlRenderingContext::ARRAY_BUFFER,
@@ -124,9 +127,6 @@ pub fn start() -> Result<(), JsValue> {
 
     let buffer = vertex_buffer_data(&vertices)?;
     let buffer2 = vertex_buffer_data(&vertices2)?;
-
-    context.vertex_attrib_pointer_with_i32(0, 3, WebGlRenderingContext::FLOAT, false, 0, 0);
-    context.enable_vertex_attrib_array(0);
 
     context.clear_color(0.0, 0.0, 0.5, 1.0);
 
@@ -165,6 +165,9 @@ pub fn start() -> Result<(), JsValue> {
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
         context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&buffer));
+        context.vertex_attrib_pointer_with_i32(vertex_position, 3, WebGlRenderingContext::FLOAT, false, 0, 0);
+        context.enable_vertex_attrib_array(vertex_position);
+
         context.draw_arrays(
             WebGlRenderingContext::TRIANGLE_FAN,
             0,
@@ -173,6 +176,8 @@ pub fn start() -> Result<(), JsValue> {
 
         context.uniform1f(angle_loc.as_ref(), -i as f32 * std::f32::consts::PI / 180.);
         context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&buffer2));
+        context.vertex_attrib_pointer_with_i32(vertex_position, 3, WebGlRenderingContext::FLOAT, false, 0, 0);
+        context.enable_vertex_attrib_array(vertex_position);
         context.draw_arrays(
             WebGlRenderingContext::TRIANGLE_FAN,
             0,
@@ -313,7 +318,7 @@ fn load_texture(gl: &WebGlRenderingContext, url: &str) -> Result<Rc<WebGlTexture
                 src_format,
                 src_type,
                 &image_clone,
-            );
+            )?;
             Ok(())
         };
 

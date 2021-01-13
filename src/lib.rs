@@ -32,6 +32,13 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
         .expect("should register `requestAnimationFrame` OK");
 }
 
+struct Enemy {
+    position: [f64; 2],
+    velocity: [f64; 2],
+    angle: f64,
+    angular_velocity: f64,
+}
+
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
     let window = window();
@@ -130,8 +137,12 @@ pub fn start() -> Result<(), JsValue> {
 
     let mut enemies = vec![];
     for i in 0..10 {
-        enemies.push([random.next(), random.next(),
-            (random.next() - 0.5) * 0.1, (random.next() - 0.5) * 0.1]);
+        enemies.push(Enemy{
+            position: [random.next(), random.next()],
+            velocity: [(random.next() - 0.5) * 0.1, (random.next() - 0.5) * 0.1],
+            angle: random.next() * std::f64::consts::PI * 2.,
+            angular_velocity: (random.next() - 0.5) * std::f64::consts::PI * 0.1,
+        });
     }
 
     context.clear_color(0.0, 0.0, 0.5, 1.0);
@@ -171,14 +182,14 @@ pub fn start() -> Result<(), JsValue> {
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
         for enemy in &mut enemies {
-            let angle = i as f32 * std::f32::consts::PI / 180.;
             let scale = 0.1;
             let size = 1. / scale;
+            let angle = enemy.angle as f32;
             let transform = [
                 angle.cos() * scale, angle.sin() * scale, 0., 0.,
                 -angle.sin() * scale, angle.cos() * scale, 0., 0.,
                 0., 0., 1., 0.,
-                enemy[0] as f32 * scale, enemy[1] as f32 * scale, 0., 1.];
+                enemy.position[0] as f32 * scale, enemy.position[1] as f32 * scale, 0., 1.];
             context.uniform_matrix4fv_with_f32_array(transform_loc.as_ref(), false, &transform);
 
             context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&rect_buffer));
@@ -195,8 +206,9 @@ pub fn start() -> Result<(), JsValue> {
                 v - ((v + size) / size2).floor() * size2
             }
 
-            enemy[0] = wrap(enemy[0] + enemy[2], size as f64);
-            enemy[1] = wrap(enemy[1] + enemy[3], size as f64);
+            enemy.position[0] = wrap(enemy.position[0] + enemy.velocity[0], size as f64);
+            enemy.position[1] = wrap(enemy.position[1] + enemy.velocity[1], size as f64);
+            enemy.angle += enemy.angular_velocity;
         }
 
         // Schedule ourself for another requestAnimationFrame callback.

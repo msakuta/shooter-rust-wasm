@@ -45,16 +45,13 @@ pub fn start() -> Result<(), JsValue> {
         &context,
         WebGlRenderingContext::VERTEX_SHADER,
         r#"
-        // attribute vec4 position;
-        attribute vec3 vertexData; // <vec2 position, vec2 texCoords>
-        uniform float angle;
+        attribute vec2 vertexData;
+        uniform mat4 transform;
         varying vec2 texCoords;
         void main() {
-            // gl_Position = position;
-            mat4 rotate = mat4(cos(angle), sin(angle), 0, 0, -sin(angle), cos(angle), 0, 0, 0, 0, 1, 0, 0,0,0,1);
-            gl_Position = rotate * vec4(vertexData.xy, 0.0, 1.0);
+            gl_Position = transform * vec4(vertexData.xy, 0.0, 1.0);
 
-            texCoords = vertexData.xy * 5.;
+            texCoords = vertexData.xy + 0.5;
         }
     "#,
     )?;
@@ -81,8 +78,8 @@ pub fn start() -> Result<(), JsValue> {
     console_log!("texture_loc: {}", texture_loc.is_some());
     let texture = load_texture(&context, "./assets/enemy.png")?;
 
-    let angle_loc = context.get_uniform_location(&program, "angle");
-    console_log!("angle_loc: {}", angle_loc.is_some());
+    let transform_loc = context.get_uniform_location(&program, "transform");
+    console_log!("transform_loc: {}", transform_loc.is_some());
 
     // Tell WebGL we want to affect texture unit 0
     context.active_texture(WebGlRenderingContext::TEXTURE0);
@@ -98,8 +95,7 @@ pub fn start() -> Result<(), JsValue> {
     let vertex_position = context.get_attrib_location(&program, "vertexData") as u32;
     console_log!("vertex_position: {}", vertex_position);
 
-    let vertices: [f32; 9] = [-0.7, -0.7, 0.0, 0.7, -0.7, 0.0, 0.0, 0.7, 0.0];
-    let vertices2: [f32; 12] = [ 0.5,  0.5, 0.0, -0.5,  0.5, 0.0, -0.5, -0.5, 0.0, 0.5, -0.5, 0.0];
+    let rect_vertices: [f32; 8] = [ 0.5,  0.5, -0.5,  0.5, -0.5, -0.5, 0.5, -0.5];
 
     let vertex_buffer_data = |vertices: &[f32]| -> Result<WebGlBuffer, JsValue> {
         let buffer = context.create_buffer().ok_or("failed to create buffer")?;
@@ -125,8 +121,12 @@ pub fn start() -> Result<(), JsValue> {
         Ok(buffer)
     };
 
-    let buffer = vertex_buffer_data(&vertices)?;
-    let buffer2 = vertex_buffer_data(&vertices2)?;
+    let rect_buffer = vertex_buffer_data(&rect_vertices)?;
+
+    let mut enemies = vec![];
+    for i in 0..10 {
+        enemies.push([i as f32, i as f32, 0.1, -0.1]);
+    }
 
     context.clear_color(0.0, 0.0, 0.5, 1.0);
 
@@ -161,28 +161,32 @@ pub fn start() -> Result<(), JsValue> {
         // requestAnimationFrame callback has fired.
         i += 1;
         console_log!("requestAnimationFrame has been called {} times.", i);
-        context.uniform1f(angle_loc.as_ref(), i as f32 * std::f32::consts::PI / 180.);
+
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
-        context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&buffer));
-        context.vertex_attrib_pointer_with_i32(vertex_position, 3, WebGlRenderingContext::FLOAT, false, 0, 0);
-        context.enable_vertex_attrib_array(vertex_position);
+        for enemy in &mut enemies {
+            let angle = i as f32 * std::f32::consts::PI / 180.;
+            let scale = 0.1;
+            let size = 1. / scale;
+            let transform = [
+                angle.cos() * scale, angle.sin() * scale, 0., 0. *enemy[0],
+                -angle.sin() * scale, angle.cos() * scale, 0., 0.* enemy[1],
+                0., 0., 1., 0.,
+                enemy[0] * scale, enemy[1] * scale, 0., 1.];
+            context.uniform_matrix4fv_with_f32_array(transform_loc.as_ref(), false, &transform);
 
-        context.draw_arrays(
-            WebGlRenderingContext::TRIANGLE_FAN,
-            0,
-            (vertices2.len() / 3) as i32,
-        );
+            context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&rect_buffer));
+            context.vertex_attrib_pointer_with_i32(vertex_position, 2, WebGlRenderingContext::FLOAT, false, 0, 0);
+            context.enable_vertex_attrib_array(vertex_position);
+            context.draw_arrays(
+                WebGlRenderingContext::TRIANGLE_FAN,
+                0,
+                4,
+            );
 
-        context.uniform1f(angle_loc.as_ref(), -i as f32 * std::f32::consts::PI / 180.);
-        context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&buffer2));
-        context.vertex_attrib_pointer_with_i32(vertex_position, 3, WebGlRenderingContext::FLOAT, false, 0, 0);
-        context.enable_vertex_attrib_array(vertex_position);
-        context.draw_arrays(
-            WebGlRenderingContext::TRIANGLE_FAN,
-            0,
-            (vertices2.len() / 3) as i32,
-        );
+            enemy[0] = (enemy[0] + enemy[2]) % size;
+            enemy[1] = (enemy[1] + enemy[3]) % size;
+        }
 
         // Schedule ourself for another requestAnimationFrame callback.
         request_animation_frame(f.borrow().as_ref().unwrap());

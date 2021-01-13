@@ -1,8 +1,11 @@
+mod xor128;
+
 use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlImageElement, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlBuffer, WebGlTexture};
+use crate::xor128::Xor128;
 
 macro_rules! console_log {
     ($fmt:expr, $($arg1:expr),*) => {
@@ -123,9 +126,12 @@ pub fn start() -> Result<(), JsValue> {
 
     let rect_buffer = vertex_buffer_data(&rect_vertices)?;
 
+    let mut random = Xor128::new(3232132);
+
     let mut enemies = vec![];
     for i in 0..10 {
-        enemies.push([i as f32, i as f32, 0.1, -0.1]);
+        enemies.push([random.next(), random.next(),
+            (random.next() - 0.5) * 0.1, (random.next() - 0.5) * 0.1]);
     }
 
     context.clear_color(0.0, 0.0, 0.5, 1.0);
@@ -169,10 +175,10 @@ pub fn start() -> Result<(), JsValue> {
             let scale = 0.1;
             let size = 1. / scale;
             let transform = [
-                angle.cos() * scale, angle.sin() * scale, 0., 0. *enemy[0],
-                -angle.sin() * scale, angle.cos() * scale, 0., 0.* enemy[1],
+                angle.cos() * scale, angle.sin() * scale, 0., 0.,
+                -angle.sin() * scale, angle.cos() * scale, 0., 0.,
                 0., 0., 1., 0.,
-                enemy[0] * scale, enemy[1] * scale, 0., 1.];
+                enemy[0] as f32 * scale, enemy[1] as f32 * scale, 0., 1.];
             context.uniform_matrix4fv_with_f32_array(transform_loc.as_ref(), false, &transform);
 
             context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&rect_buffer));
@@ -184,8 +190,13 @@ pub fn start() -> Result<(), JsValue> {
                 4,
             );
 
-            enemy[0] = (enemy[0] + enemy[2]) % size;
-            enemy[1] = (enemy[1] + enemy[3]) % size;
+            fn wrap(v: f64, size: f64) -> f64 {
+                let size2 = size * 2.;
+                v - ((v + size) / size2).floor() * size2
+            }
+
+            enemy[0] = wrap(enemy[0] + enemy[2], size as f64);
+            enemy[1] = wrap(enemy[1] + enemy[3], size as f64);
         }
 
         // Schedule ourself for another requestAnimationFrame callback.

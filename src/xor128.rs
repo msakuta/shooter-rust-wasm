@@ -1,4 +1,3 @@
-
 pub(crate) struct Xor128 {
     x: u32,
 }

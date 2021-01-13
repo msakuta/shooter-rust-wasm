@@ -1,11 +1,14 @@
 mod xor128;
 
+use crate::xor128::Xor128;
+use cgmath::{Matrix4, Rad, Vector3};
 use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlImageElement, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlBuffer, WebGlTexture};
-use crate::xor128::Xor128;
+use web_sys::{
+    HtmlImageElement, WebGlBuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture,
+};
 
 macro_rules! console_log {
     ($fmt:expr, $($arg1:expr),*) => {
@@ -100,12 +103,15 @@ pub fn start() -> Result<(), JsValue> {
 
     context.enable(WebGlRenderingContext::BLEND);
     context.blend_equation(WebGlRenderingContext::FUNC_ADD);
-    context.blend_func(WebGlRenderingContext::SRC_ALPHA, WebGlRenderingContext::ONE_MINUS_SRC_ALPHA);
+    context.blend_func(
+        WebGlRenderingContext::SRC_ALPHA,
+        WebGlRenderingContext::ONE_MINUS_SRC_ALPHA,
+    );
 
     let vertex_position = context.get_attrib_location(&program, "vertexData") as u32;
     console_log!("vertex_position: {}", vertex_position);
 
-    let rect_vertices: [f32; 8] = [ 0.5,  0.5, -0.5,  0.5, -0.5, -0.5, 0.5, -0.5];
+    let rect_vertices: [f32; 8] = [0.5, 0.5, -0.5, 0.5, -0.5, -0.5, 0.5, -0.5];
 
     let vertex_buffer_data = |vertices: &[f32]| -> Result<WebGlBuffer, JsValue> {
         let buffer = context.create_buffer().ok_or("failed to create buffer")?;
@@ -136,8 +142,8 @@ pub fn start() -> Result<(), JsValue> {
     let mut random = Xor128::new(3232132);
 
     let mut enemies = vec![];
-    for i in 0..10 {
-        enemies.push(Enemy{
+    for _ in 0..10 {
+        enemies.push(Enemy {
             position: [random.next(), random.next()],
             velocity: [(random.next() - 0.5) * 0.1, (random.next() - 0.5) * 0.1],
             angle: random.next() * std::f64::consts::PI * 2.,
@@ -185,21 +191,31 @@ pub fn start() -> Result<(), JsValue> {
             let scale = 0.1;
             let size = 1. / scale;
             let angle = enemy.angle as f32;
-            let transform = [
-                angle.cos() * scale, angle.sin() * scale, 0., 0.,
-                -angle.sin() * scale, angle.cos() * scale, 0., 0.,
-                0., 0., 1., 0.,
-                enemy.position[0] as f32 * scale, enemy.position[1] as f32 * scale, 0., 1.];
-            context.uniform_matrix4fv_with_f32_array(transform_loc.as_ref(), false, &transform);
+            let scale_mat = Matrix4::from_scale(scale as f32);
+            let rotation = Matrix4::from_angle_z(Rad(angle));
+            let translation = Matrix4::from_translation(Vector3::new(
+                enemy.position[0] as f32,
+                enemy.position[1] as f32,
+                0.,
+            ));
+            let transform = &scale_mat * &translation * &rotation;
+            context.uniform_matrix4fv_with_f32_array(
+                transform_loc.as_ref(),
+                false,
+                <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform),
+            );
 
             context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&rect_buffer));
-            context.vertex_attrib_pointer_with_i32(vertex_position, 2, WebGlRenderingContext::FLOAT, false, 0, 0);
-            context.enable_vertex_attrib_array(vertex_position);
-            context.draw_arrays(
-                WebGlRenderingContext::TRIANGLE_FAN,
+            context.vertex_attrib_pointer_with_i32(
+                vertex_position,
+                2,
+                WebGlRenderingContext::FLOAT,
+                false,
                 0,
-                4,
+                0,
             );
+            context.enable_vertex_attrib_array(vertex_position);
+            context.draw_arrays(WebGlRenderingContext::TRIANGLE_FAN, 0, 4);
 
             fn wrap(v: f64, size: f64) -> f64 {
                 let size2 = size * 2.;
@@ -373,6 +389,6 @@ fn load_texture(gl: &WebGlRenderingContext, url: &str) -> Result<Rc<WebGlTexture
     Ok(texture)
 }
 
-fn is_power_of_2(value: usize) -> bool {
+fn _is_power_of_2(value: usize) -> bool {
     (value & (value - 1)) == 0
 }

@@ -43,7 +43,7 @@ struct Enemy {
 }
 
 #[wasm_bindgen]
-pub fn start(enemy_url: &str, player_url: &str) -> Result<(), JsValue> {
+pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
     let window = window();
     let document = window.document().unwrap();
     let canvas = document.get_element_by_id("canvas").unwrap();
@@ -88,9 +88,30 @@ pub fn start(enemy_url: &str, player_url: &str) -> Result<(), JsValue> {
     context.use_program(Some(&program));
 
     let texture_loc = context.get_uniform_location(&program, "texture");
-    console_log!("texture_loc: {}", texture_loc.is_some());
-    let texture = load_texture(&context, enemy_url)?;
-    let player_texture = load_texture(&context, player_url)?;
+
+    let load_texture_local = |path| -> Result<Rc<WebGlTexture>, JsValue> {
+        if let Some(value) = image_assets.iter().find(|value| {
+            let array = js_sys::Array::from(value);
+            array.iter().next() == Some(JsValue::from_str(path))
+        }) {
+            let array = js_sys::Array::from(&value).to_vec();
+            load_texture(
+                &context,
+                &array
+                    .get(1)
+                    .ok_or_else(|| JsValue::from_str("Couldn't find texture"))?
+                    .as_string()
+                    .ok_or_else(|| {
+                        JsValue::from_str(&format!("Couldn't convert value to String: {:?}", path))
+                    })?,
+            )
+        } else {
+            Err(JsValue::from_str("Couldn't find texture"))
+        }
+    };
+
+    let texture = load_texture_local("enemy")?;
+    let player_texture = load_texture_local("player")?;
 
     let transform_loc = context.get_uniform_location(&program, "transform");
     console_log!("transform_loc: {}", transform_loc.is_some());
@@ -182,7 +203,7 @@ pub fn start(enemy_url: &str, player_url: &str) -> Result<(), JsValue> {
         // Set the body's text content to how many times this
         // requestAnimationFrame callback has fired.
         i += 1;
-        console_log!("requestAnimationFrame has been called {} times.", i);
+        // console_log!("requestAnimationFrame has been called {} times.", i);
 
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
@@ -233,11 +254,7 @@ pub fn start(enemy_url: &str, player_url: &str) -> Result<(), JsValue> {
         context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*player_texture));
         let scale_mat = Matrix4::from_nonuniform_scale(scale as f32, -scale as f32, 1.);
         let rotation = Matrix4::from_angle_z(Rad(0.));
-        let translation = Matrix4::from_translation(Vector3::new(
-            0. as f32,
-            3. as f32,
-            0.,
-        ));
+        let translation = Matrix4::from_translation(Vector3::new(0. as f32, 3. as f32, 0.));
         let transform = &scale_mat * &translation * &rotation;
         context.uniform_matrix4fv_with_f32_array(
             transform_loc.as_ref(),

@@ -9,5 +9,9 @@ const rust = import('../pkg');
 rust
   .catch(console.error)
   .then((module) => {
-    module.start(enemy, player);
+    let image_assets = [
+      ["enemy", enemy],
+      ["player", player],
+    ];
+    module.start(image_assets);
   });

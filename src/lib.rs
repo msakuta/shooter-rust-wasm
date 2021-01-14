@@ -42,6 +42,12 @@ struct Enemy {
     angular_velocity: f64,
 }
 
+struct Bullet {
+    pub pos: [f64; 2],
+    pub velo: [f64; 2],
+    pub rotation: f32,
+}
+
 #[wasm_bindgen]
 pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
     let window = window();
@@ -112,6 +118,7 @@ pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
 
     let texture = load_texture_local("enemy")?;
     let player_texture = load_texture_local("player")?;
+    let bullet_texture = load_texture_local("bullet")?;
 
     let transform_loc = context.get_uniform_location(&program, "transform");
     console_log!("transform_loc: {}", transform_loc.is_some());
@@ -171,6 +178,8 @@ pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
         });
     }
 
+    let mut bullets = Vec::<Bullet>::new();
+
     context.clear_color(0.0, 0.0, 0.5, 1.0);
 
     // Here we want to call `requestAnimationFrame` in a loop, but only a fixed
@@ -204,6 +213,14 @@ pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
         // requestAnimationFrame callback has fired.
         i += 1;
         // console_log!("requestAnimationFrame has been called {} times.", i);
+
+        if i % 5 == 0 {
+            bullets.push(Bullet{
+                pos: [0., -3.],
+                velo: [0., 0.3],
+                rotation: 0.,
+            });
+        }
 
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
@@ -250,6 +267,38 @@ pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
             enemy.position[1] = wrap(enemy.position[1] + enemy.velocity[1], size as f64);
             enemy.angle += enemy.angular_velocity;
         }
+
+        context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*bullet_texture));
+
+        bullets = std::mem::take(&mut bullets).into_iter().filter_map(|mut bullet| {
+            let angle = bullet.rotation as f32;
+            let scale_mat = Matrix4::from_scale(scale as f32);
+            let rotation = Matrix4::from_angle_z(Rad(angle));
+            let translation = Matrix4::from_translation(Vector3::new(
+                bullet.pos[0] as f32,
+                bullet.pos[1] as f32,
+                0.,
+            ));
+            let raw_scale_mat = Matrix4::from_nonuniform_scale(0.5, -0.5, 1.);
+            let transform = &scale_mat * &translation * &rotation * &raw_scale_mat;
+            context.uniform_matrix4fv_with_f32_array(
+                transform_loc.as_ref(),
+                false,
+                <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform),
+            );
+
+            context.draw_arrays(WebGlRenderingContext::TRIANGLE_FAN, 0, 4);
+
+            bullet.pos[0] = bullet.pos[0] + bullet.velo[0];
+            bullet.pos[1] = bullet.pos[1] + bullet.velo[1];
+            if -size < bullet.pos[0] && bullet.pos[0] < size &&
+                -size < bullet.pos[1] && bullet.pos[1] < size
+            {
+                Some(bullet)
+            } else {
+                None
+            }
+        }).collect::<Vec<_>>();
 
         context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*player_texture));
         let scale_mat = Matrix4::from_nonuniform_scale(scale as f32, -scale as f32, 1.);

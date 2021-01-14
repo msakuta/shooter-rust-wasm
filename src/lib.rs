@@ -90,6 +90,7 @@ pub fn start() -> Result<(), JsValue> {
     let texture_loc = context.get_uniform_location(&program, "texture");
     console_log!("texture_loc: {}", texture_loc.is_some());
     let texture = load_texture(&context, "./assets/enemy.png")?;
+    let player_texture = load_texture(&context, "./assets/player.png")?;
 
     let transform_loc = context.get_uniform_location(&program, "transform");
     console_log!("transform_loc: {}", transform_loc.is_some());
@@ -97,8 +98,6 @@ pub fn start() -> Result<(), JsValue> {
     // Tell WebGL we want to affect texture unit 0
     context.active_texture(WebGlRenderingContext::TEXTURE0);
 
-    // Bind the texture to texture unit 0
-    context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*texture));
     context.uniform1i(texture_loc.as_ref(), 0);
 
     context.enable(WebGlRenderingContext::BLEND);
@@ -187,9 +186,23 @@ pub fn start() -> Result<(), JsValue> {
 
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
+        // Bind the texture to texture unit 0
+        context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*texture));
+
+        context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&rect_buffer));
+        context.vertex_attrib_pointer_with_i32(
+            vertex_position,
+            2,
+            WebGlRenderingContext::FLOAT,
+            false,
+            0,
+            0,
+        );
+        context.enable_vertex_attrib_array(vertex_position);
+
+        let scale = 0.1;
+        let size = 1. / scale;
         for enemy in &mut enemies {
-            let scale = 0.1;
-            let size = 1. / scale;
             let angle = enemy.angle as f32;
             let scale_mat = Matrix4::from_scale(scale as f32);
             let rotation = Matrix4::from_angle_z(Rad(angle));
@@ -205,16 +218,6 @@ pub fn start() -> Result<(), JsValue> {
                 <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform),
             );
 
-            context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&rect_buffer));
-            context.vertex_attrib_pointer_with_i32(
-                vertex_position,
-                2,
-                WebGlRenderingContext::FLOAT,
-                false,
-                0,
-                0,
-            );
-            context.enable_vertex_attrib_array(vertex_position);
             context.draw_arrays(WebGlRenderingContext::TRIANGLE_FAN, 0, 4);
 
             fn wrap(v: f64, size: f64) -> f64 {
@@ -226,6 +229,22 @@ pub fn start() -> Result<(), JsValue> {
             enemy.position[1] = wrap(enemy.position[1] + enemy.velocity[1], size as f64);
             enemy.angle += enemy.angular_velocity;
         }
+
+        context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*player_texture));
+        let scale_mat = Matrix4::from_nonuniform_scale(scale as f32, -scale as f32, 1.);
+        let rotation = Matrix4::from_angle_z(Rad(0.));
+        let translation = Matrix4::from_translation(Vector3::new(
+            0. as f32,
+            3. as f32,
+            0.,
+        ));
+        let transform = &scale_mat * &translation * &rotation;
+        context.uniform_matrix4fv_with_f32_array(
+            transform_loc.as_ref(),
+            false,
+            <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform),
+        );
+        context.draw_arrays(WebGlRenderingContext::TRIANGLE_FAN, 0, 4);
 
         // Schedule ourself for another requestAnimationFrame callback.
         request_animation_frame(f.borrow().as_ref().unwrap());

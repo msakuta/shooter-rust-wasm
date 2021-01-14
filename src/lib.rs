@@ -42,8 +42,8 @@ struct Enemy {
     angular_velocity: f64,
 }
 
-#[wasm_bindgen(start)]
-pub fn start() -> Result<(), JsValue> {
+#[wasm_bindgen]
+pub fn start(enemy_url: &str, player_url: &str) -> Result<(), JsValue> {
     let window = window();
     let document = window.document().unwrap();
     let canvas = document.get_element_by_id("canvas").unwrap();
@@ -89,8 +89,8 @@ pub fn start() -> Result<(), JsValue> {
 
     let texture_loc = context.get_uniform_location(&program, "texture");
     console_log!("texture_loc: {}", texture_loc.is_some());
-    let texture = load_texture(&context, "./assets/enemy.png")?;
-    let player_texture = load_texture(&context, "./assets/player.png")?;
+    let texture = load_texture(&context, enemy_url)?;
+    let player_texture = load_texture(&context, player_url)?;
 
     let transform_loc = context.get_uniform_location(&program, "transform");
     console_log!("transform_loc: {}", transform_loc.is_some());

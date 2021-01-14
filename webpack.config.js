@@ -23,5 +23,20 @@ module.exports = {
           TextEncoder: ['text-encoding', 'TextEncoder']
         })
     ],
-    mode: 'development'
+    mode: 'development',
+    module: {
+      rules: [
+        {
+          test: /\.(png|jpe?g|gif)$/i,
+          use: [
+            {
+              loader: 'url-loader',
+              options: {
+                limit: 8192,
+              }
+            }
+          ]
+        }
+      ]
+    }
 };

@@ -15,5 +15,16 @@ rust
       ["player", player],
       ["bullet", bullet],
     ];
-    module.start(image_assets);
+    let state = new module.ShooterState(image_assets);
+
+    state.start();
+
+    document.addEventListener("keydown", (event) => state.key_down(event));
+    document.addEventListener("keyup", (event) => state.key_up(event));
+
+    function render() {
+      state.render();
+      requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
   });

@@ -35,6 +35,21 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
         .expect("should register `requestAnimationFrame` OK");
 }
 
+fn get_context() -> WebGlRenderingContext {
+    let window = window();
+    let document = window.document().unwrap();
+    let canvas = document.get_element_by_id("canvas").unwrap();
+    let canvas: web_sys::HtmlCanvasElement =
+        canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap();
+
+    canvas
+        .get_context("webgl")
+        .unwrap()
+        .unwrap()
+        .dyn_into::<WebGlRenderingContext>()
+        .unwrap()
+}
+
 struct Enemy {
     position: [f64; 2],
     velocity: [f64; 2],
@@ -49,16 +64,84 @@ struct Bullet {
 }
 
 #[wasm_bindgen]
-pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
-    let window = window();
-    let document = window.document().unwrap();
-    let canvas = document.get_element_by_id("canvas").unwrap();
-    let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into::<web_sys::HtmlCanvasElement>()?;
+pub struct ShooterState {
+    texture: Rc<WebGlTexture>,
+    player_texture: Rc<WebGlTexture>,
+    bullet_texture: Rc<WebGlTexture>,
+}
 
-    let context = canvas
-        .get_context("webgl")?
-        .unwrap()
-        .dyn_into::<WebGlRenderingContext>()?;
+#[wasm_bindgen]
+impl ShooterState {
+    #[wasm_bindgen(constructor)]
+    pub fn new(image_assets: js_sys::Array) -> Result<ShooterState, JsValue> {
+        let context = get_context();
+
+        let load_texture_local = |path| -> Result<Rc<WebGlTexture>, JsValue> {
+            if let Some(value) = image_assets.iter().find(|value| {
+                let array = js_sys::Array::from(value);
+                array.iter().next() == Some(JsValue::from_str(path))
+            }) {
+                let array = js_sys::Array::from(&value).to_vec();
+                load_texture(
+                    &context,
+                    &array
+                        .get(1)
+                        .ok_or_else(|| JsValue::from_str("Couldn't find texture"))?
+                        .as_string()
+                        .ok_or_else(|| {
+                            JsValue::from_str(&format!(
+                                "Couldn't convert value to String: {:?}",
+                                path
+                            ))
+                        })?,
+                )
+            } else {
+                Err(JsValue::from_str("Couldn't find texture"))
+            }
+        };
+
+        Ok(Self {
+            texture: load_texture_local("enemy")?,
+            player_texture: load_texture_local("player")?,
+            bullet_texture: load_texture_local("bullet")?,
+        })
+    }
+
+    fn key_down(&mut self, key: i32) {
+        println!("key: {}", key);
+    }
+}
+
+#[wasm_bindgen]
+pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
+    let mut state = ShooterState::new(image_assets)?;
+    let context = get_context();
+
+    let document = window()
+        .document()
+        .ok_or_else(|| JsValue::from_str("Document could not get"))?;
+
+    let key_pressed = Rc::new(RefCell::new(false));
+    let key_pressed_copy = key_pressed.clone();
+    let key_pressed_copy2 = key_pressed.clone();
+
+    let key_down_event_handler = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
+        console_log!("key: {}", event.key_code());
+        if event.key_code() == 32 {
+            *key_pressed.borrow_mut() = true;
+        }
+    }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
+    document.set_onkeydown(Some(key_down_event_handler.as_ref().unchecked_ref()));
+    key_down_event_handler.forget();
+
+    let key_up_event_hander = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
+        console_log!("key: {}", event.key_code());
+        if event.key_code() == 32 {
+            *key_pressed_copy2.borrow_mut() = false;
+        }
+    }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
+    document.set_onkeyup(Some(key_up_event_hander.as_ref().unchecked_ref()));
+    key_up_event_hander.forget();
 
     let vert_shader = compile_shader(
         &context,
@@ -94,32 +177,6 @@ pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
     context.use_program(Some(&program));
 
     let texture_loc = context.get_uniform_location(&program, "texture");
-
-    let load_texture_local = |path| -> Result<Rc<WebGlTexture>, JsValue> {
-        if let Some(value) = image_assets.iter().find(|value| {
-            let array = js_sys::Array::from(value);
-            array.iter().next() == Some(JsValue::from_str(path))
-        }) {
-            let array = js_sys::Array::from(&value).to_vec();
-            load_texture(
-                &context,
-                &array
-                    .get(1)
-                    .ok_or_else(|| JsValue::from_str("Couldn't find texture"))?
-                    .as_string()
-                    .ok_or_else(|| {
-                        JsValue::from_str(&format!("Couldn't convert value to String: {:?}", path))
-                    })?,
-            )
-        } else {
-            Err(JsValue::from_str("Couldn't find texture"))
-        }
-    };
-
-    let texture = load_texture_local("enemy")?;
-    let player_texture = load_texture_local("player")?;
-    let bullet_texture = load_texture_local("bullet")?;
-
     let transform_loc = context.get_uniform_location(&program, "transform");
     console_log!("transform_loc: {}", transform_loc.is_some());
 
@@ -214,18 +271,20 @@ pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
         i += 1;
         // console_log!("requestAnimationFrame has been called {} times.", i);
 
-        if i % 5 == 0 {
-            bullets.push(Bullet{
-                pos: [0., -3.],
-                velo: [0., 0.3],
-                rotation: 0.,
-            });
+        if *key_pressed_copy.borrow() {
+            if i % 5 == 0 {
+                bullets.push(Bullet {
+                    pos: [0., -3.],
+                    velo: [0., 0.3],
+                    rotation: 0.,
+                });
+            }
         }
 
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
         // Bind the texture to texture unit 0
-        context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*texture));
+        context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*state.texture));
 
         context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&rect_buffer));
         context.vertex_attrib_pointer_with_i32(
@@ -268,39 +327,50 @@ pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
             enemy.angle += enemy.angular_velocity;
         }
 
-        context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*bullet_texture));
+        context.bind_texture(
+            WebGlRenderingContext::TEXTURE_2D,
+            Some(&*state.bullet_texture),
+        );
 
-        bullets = std::mem::take(&mut bullets).into_iter().filter_map(|mut bullet| {
-            let angle = bullet.rotation as f32;
-            let scale_mat = Matrix4::from_scale(scale as f32);
-            let rotation = Matrix4::from_angle_z(Rad(angle));
-            let translation = Matrix4::from_translation(Vector3::new(
-                bullet.pos[0] as f32,
-                bullet.pos[1] as f32,
-                0.,
-            ));
-            let raw_scale_mat = Matrix4::from_nonuniform_scale(0.5, -0.5, 1.);
-            let transform = &scale_mat * &translation * &rotation * &raw_scale_mat;
-            context.uniform_matrix4fv_with_f32_array(
-                transform_loc.as_ref(),
-                false,
-                <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform),
-            );
+        bullets = std::mem::take(&mut bullets)
+            .into_iter()
+            .filter_map(|mut bullet| {
+                let angle = bullet.rotation as f32;
+                let scale_mat = Matrix4::from_scale(scale as f32);
+                let rotation = Matrix4::from_angle_z(Rad(angle));
+                let translation = Matrix4::from_translation(Vector3::new(
+                    bullet.pos[0] as f32,
+                    bullet.pos[1] as f32,
+                    0.,
+                ));
+                let raw_scale_mat = Matrix4::from_nonuniform_scale(0.5, -0.5, 1.);
+                let transform = &scale_mat * &translation * &rotation * &raw_scale_mat;
+                context.uniform_matrix4fv_with_f32_array(
+                    transform_loc.as_ref(),
+                    false,
+                    <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform),
+                );
 
-            context.draw_arrays(WebGlRenderingContext::TRIANGLE_FAN, 0, 4);
+                context.draw_arrays(WebGlRenderingContext::TRIANGLE_FAN, 0, 4);
 
-            bullet.pos[0] = bullet.pos[0] + bullet.velo[0];
-            bullet.pos[1] = bullet.pos[1] + bullet.velo[1];
-            if -size < bullet.pos[0] && bullet.pos[0] < size &&
-                -size < bullet.pos[1] && bullet.pos[1] < size
-            {
-                Some(bullet)
-            } else {
-                None
-            }
-        }).collect::<Vec<_>>();
+                bullet.pos[0] = bullet.pos[0] + bullet.velo[0];
+                bullet.pos[1] = bullet.pos[1] + bullet.velo[1];
+                if -size < bullet.pos[0]
+                    && bullet.pos[0] < size
+                    && -size < bullet.pos[1]
+                    && bullet.pos[1] < size
+                {
+                    Some(bullet)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
 
-        context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*player_texture));
+        context.bind_texture(
+            WebGlRenderingContext::TEXTURE_2D,
+            Some(&*state.player_texture),
+        );
         let scale_mat = Matrix4::from_nonuniform_scale(scale as f32, -scale as f32, 1.);
         let rotation = Matrix4::from_angle_z(Rad(0.));
         let translation = Matrix4::from_translation(Vector3::new(0. as f32, 3. as f32, 0.));

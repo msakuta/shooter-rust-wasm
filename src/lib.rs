@@ -67,6 +67,8 @@ pub struct ShooterState {
     shoot_pressed: bool,
     left_pressed: bool,
     right_pressed: bool,
+    up_pressed: bool,
+    down_pressed: bool,
 
     texture: Rc<WebGlTexture>,
     player_texture: Rc<WebGlTexture>,
@@ -115,6 +117,8 @@ impl ShooterState {
             shoot_pressed: false,
             left_pressed: false,
             right_pressed: false,
+            up_pressed: false,
+            down_pressed: false,
             texture: load_texture_local("enemy")?,
             player_texture: load_texture_local("player")?,
             bullet_texture: load_texture_local("bullet")?,
@@ -131,6 +135,8 @@ impl ShooterState {
             32 => self.shoot_pressed = true,
             65 => self.left_pressed = true,
             68 => self.right_pressed = true,
+            87 => self.up_pressed = true,
+            83 => self.down_pressed = true,
             _ => (),
         }
     }
@@ -141,6 +147,8 @@ impl ShooterState {
             32 => self.shoot_pressed = false,
             65 => self.left_pressed = false,
             68 => self.right_pressed = false,
+            87 => self.up_pressed = false,
+            83 => self.down_pressed = false,
             _ => (),
         }
     }
@@ -271,11 +279,20 @@ impl ShooterState {
             }
         }
 
-        if self.left_pressed {
+        let scale = 0.1;
+        let size = 1. / scale;
+
+        if self.left_pressed && -size < self.player[0] - 0.1 {
             self.player[0] -= 0.1;
         }
-        if self.right_pressed {
+        if self.right_pressed && self.player[0] + 0.1 < size {
             self.player[0] += 0.1;
+        }
+        if self.down_pressed && -size < self.player[1] - 0.1 {
+            self.player[1] -= 0.1;
+        }
+        if self.up_pressed && self.player[1] + 0.1 < size {
+            self.player[1] += 0.1;
         }
 
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
@@ -297,8 +314,6 @@ impl ShooterState {
         );
         context.enable_vertex_attrib_array(self.vertex_position);
 
-        let scale = 0.1;
-        let size = 1. / scale;
         for enemy in &mut self.enemies {
             let angle = enemy.angle as f32;
             let scale_mat = Matrix4::from_scale(scale as f32);

@@ -1,5 +1,8 @@
+mod consts;
+mod entity;
 mod xor128;
 
+use crate::entity::{Enemy, EnemyBase, Entity};
 use crate::xor128::Xor128;
 use cgmath::{Matrix4, Rad, Vector3};
 use std::rc::Rc;
@@ -44,13 +47,6 @@ fn get_context() -> WebGlRenderingContext {
         .unwrap()
 }
 
-struct Enemy {
-    position: [f64; 2],
-    velocity: [f64; 2],
-    angle: f64,
-    angular_velocity: f64,
-}
-
 struct Bullet {
     pub pos: [f64; 2],
     pub velo: [f64; 2],
@@ -60,6 +56,7 @@ struct Bullet {
 #[wasm_bindgen]
 pub struct ShooterState {
     time: usize,
+    id_gen: u32,
     player: [f64; 2],
     enemies: Vec<Enemy>,
     bullets: Vec<Bullet>,
@@ -111,6 +108,7 @@ impl ShooterState {
 
         Ok(Self {
             time: 0,
+            id_gen: 0,
             player: [0., -3.],
             enemies: vec![],
             bullets: vec![],
@@ -239,12 +237,15 @@ impl ShooterState {
         let mut random = Xor128::new(3232132);
 
         for _ in 0..10 {
-            self.enemies.push(Enemy {
-                position: [random.next(), random.next()],
-                velocity: [(random.next() - 0.5) * 0.1, (random.next() - 0.5) * 0.1],
-                angle: random.next() * std::f64::consts::PI * 2.,
-                angular_velocity: (random.next() - 0.5) * std::f64::consts::PI * 0.1,
-            });
+            let mut enemy = Enemy::Enemy1(EnemyBase::new(
+                &mut self.id_gen,
+                [random.next(), random.next()],
+                [(random.next() - 0.5) * 0.1, (random.next() - 0.5) * 0.1],
+            ));
+            enemy.get_base_mut().0.rotation = random.next() as f32 * std::f32::consts::PI * 2.;
+            enemy.get_base_mut().0.angular_velocity =
+                (random.next() - 0.5) as f32 * std::f32::consts::PI * 0.1;
+            self.enemies.push(enemy);
         }
 
         context.clear_color(0.0, 0.0, 0.5, 1.0);
@@ -314,33 +315,15 @@ impl ShooterState {
         );
         context.enable_vertex_attrib_array(self.vertex_position);
 
-        for enemy in &mut self.enemies {
-            let angle = enemy.angle as f32;
-            let scale_mat = Matrix4::from_scale(scale as f32);
-            let rotation = Matrix4::from_angle_z(Rad(angle));
-            let translation = Matrix4::from_translation(Vector3::new(
-                enemy.position[0] as f32,
-                enemy.position[1] as f32,
-                0.,
-            ));
-            let transform = &scale_mat * &translation * &rotation;
-            context.uniform_matrix4fv_with_f32_array(
-                self.transform_loc.as_ref(),
-                false,
-                <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform),
-            );
-
-            context.draw_arrays(WebGlRenderingContext::TRIANGLE_FAN, 0, 4);
-
-            fn wrap(v: f64, size: f64) -> f64 {
-                let size2 = size * 2.;
-                v - ((v + size) / size2).floor() * size2
-            }
-
-            enemy.position[0] = wrap(enemy.position[0] + enemy.velocity[0], size as f64);
-            enemy.position[1] = wrap(enemy.position[1] + enemy.velocity[1], size as f64);
-            enemy.angle += enemy.angular_velocity;
+        for enemy in &self.enemies {
+            enemy.draw(self, &context, &());
         }
+
+        let mut enemies = std::mem::take(&mut self.enemies);
+        for enemy in &mut enemies {
+            enemy.animate(self);
+        }
+        self.enemies = enemies;
 
         context.bind_texture(
             WebGlRenderingContext::TEXTURE_2D,

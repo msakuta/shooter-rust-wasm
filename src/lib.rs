@@ -65,6 +65,10 @@ struct Bullet {
 
 #[wasm_bindgen]
 pub struct ShooterState {
+    shoot_pressed: bool,
+    left_pressed: bool,
+    right_pressed: bool,
+
     texture: Rc<WebGlTexture>,
     player_texture: Rc<WebGlTexture>,
     bullet_texture: Rc<WebGlTexture>,
@@ -101,44 +105,56 @@ impl ShooterState {
         };
 
         Ok(Self {
+            shoot_pressed: false,
+            left_pressed: false,
+            right_pressed: false,
             texture: load_texture_local("enemy")?,
             player_texture: load_texture_local("player")?,
             bullet_texture: load_texture_local("bullet")?,
         })
     }
 
-    fn key_down(&mut self, key: i32) {
-        println!("key: {}", key);
+    fn key_down(&mut self, event: web_sys::KeyboardEvent) {
+        println!("key: {}", event.key_code());
+        match event.key_code() {
+            32 => self.shoot_pressed = true,
+            65 => self.left_pressed = true,
+            68 => self.right_pressed = true,
+            _ => ()
+        }
+    }
+
+    fn key_up(&mut self, event: web_sys::KeyboardEvent) {
+        console_log!("key: {}", event.key_code());
+        match event.key_code() {
+            32 => self.shoot_pressed = false,
+            65 => self.left_pressed = false,
+            68 => self.right_pressed = false,
+            _ => (),
+        }
     }
 }
 
 #[wasm_bindgen]
 pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
-    let mut state = ShooterState::new(image_assets)?;
+    let mut state = Rc::new(RefCell::new(ShooterState::new(image_assets)?));
     let context = get_context();
 
     let document = window()
         .document()
         .ok_or_else(|| JsValue::from_str("Document could not get"))?;
 
-    let key_pressed = Rc::new(RefCell::new(false));
-    let key_pressed_copy = key_pressed.clone();
-    let key_pressed_copy2 = key_pressed.clone();
+    let state_copy = state.clone();
+    let state_copy2 = state.clone();
 
     let key_down_event_handler = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
-        console_log!("key: {}", event.key_code());
-        if event.key_code() == 32 {
-            *key_pressed.borrow_mut() = true;
-        }
+        state_copy.borrow_mut().key_down(event);
     }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
     document.set_onkeydown(Some(key_down_event_handler.as_ref().unchecked_ref()));
     key_down_event_handler.forget();
 
     let key_up_event_hander = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
-        console_log!("key: {}", event.key_code());
-        if event.key_code() == 32 {
-            *key_pressed_copy2.borrow_mut() = false;
-        }
+        state_copy2.borrow_mut().key_up(event);
     }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
     document.set_onkeyup(Some(key_up_event_hander.as_ref().unchecked_ref()));
     key_up_event_hander.forget();
@@ -237,6 +253,8 @@ pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
 
     let mut bullets = Vec::<Bullet>::new();
 
+    let mut player = [0., -3.];
+
     context.clear_color(0.0, 0.0, 0.5, 1.0);
 
     // Here we want to call `requestAnimationFrame` in a loop, but only a fixed
@@ -271,20 +289,27 @@ pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
         i += 1;
         // console_log!("requestAnimationFrame has been called {} times.", i);
 
-        if *key_pressed_copy.borrow() {
+        if state.borrow().shoot_pressed {
             if i % 5 == 0 {
                 bullets.push(Bullet {
-                    pos: [0., -3.],
+                    pos: player,
                     velo: [0., 0.3],
                     rotation: 0.,
                 });
             }
         }
 
+        if state.borrow().left_pressed {
+            player[0] -= 0.1;
+        }
+        if state.borrow().right_pressed {
+            player[0] += 0.1;
+        }
+
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
         // Bind the texture to texture unit 0
-        context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*state.texture));
+        context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*state.borrow().texture));
 
         context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&rect_buffer));
         context.vertex_attrib_pointer_with_i32(
@@ -329,7 +354,7 @@ pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
 
         context.bind_texture(
             WebGlRenderingContext::TEXTURE_2D,
-            Some(&*state.bullet_texture),
+            Some(&*state.borrow().bullet_texture),
         );
 
         bullets = std::mem::take(&mut bullets)
@@ -369,12 +394,13 @@ pub fn start(image_assets: js_sys::Array) -> Result<(), JsValue> {
 
         context.bind_texture(
             WebGlRenderingContext::TEXTURE_2D,
-            Some(&*state.player_texture),
+            Some(&*state.borrow().player_texture),
         );
-        let scale_mat = Matrix4::from_nonuniform_scale(scale as f32, -scale as f32, 1.);
+        let scale_mat = Matrix4::from_nonuniform_scale(scale as f32, scale as f32, 1.);
         let rotation = Matrix4::from_angle_z(Rad(0.));
-        let translation = Matrix4::from_translation(Vector3::new(0. as f32, 3. as f32, 0.));
-        let transform = &scale_mat * &translation * &rotation;
+        let translation = Matrix4::from_translation(Vector3::new(player[0] as f32, player[1] as f32, 0.));
+        let transform = &scale_mat * &translation * &rotation
+            * &Matrix4::from_nonuniform_scale(1., -1., 1.);
         context.uniform_matrix4fv_with_f32_array(
             transform_loc.as_ref(),
             false,

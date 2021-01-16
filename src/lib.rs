@@ -21,7 +21,9 @@ mod entity;
 mod xor128;
 
 use crate::consts::*;
-use crate::entity::{Assets, BulletBase, Enemy, EnemyBase, Entity, Player, Projectile};
+use crate::entity::{
+    Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Player, Projectile,
+};
 use crate::xor128::Xor128;
 
 #[wasm_bindgen]
@@ -34,9 +36,12 @@ fn window() -> web_sys::Window {
     web_sys::window().expect("no global `window` exists")
 }
 
+fn document() -> web_sys::Document {
+    window().document().unwrap()
+}
+
 fn get_context() -> WebGlRenderingContext {
-    let window = window();
-    let document = window.document().unwrap();
+    let document = document();
     let canvas = document.get_element_by_id("canvas").unwrap();
     let canvas: web_sys::HtmlCanvasElement =
         canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap();
@@ -101,6 +106,7 @@ impl ShooterState {
         let player = Player {
             base: Entity::new(&mut id_gen, [FWIDTH / 2., FHEIGHT / 2.], [0., 0.]),
             score: 0,
+            kills: 0,
         };
 
         Ok(Self {
@@ -357,7 +363,11 @@ impl ShooterState {
         self.enemies = std::mem::take(&mut self.enemies)
             .into_iter()
             .filter_map(|mut enemy| {
-                if let Some(_death_reason) = enemy.animate(self) {
+                if let Some(death_reason) = enemy.animate(self) {
+                    if let DeathReason::Killed = death_reason {
+                        self.player.kills += 1;
+                        self.player.score += 1;
+                    }
                     None
                 } else {
                     Some(enemy)
@@ -395,6 +405,14 @@ impl ShooterState {
             &self.assets.player_texture,
             Some(PLAYER_SIZE),
         );
+
+        fn set_text(id: &str, text: &str) {
+            let frame_element = document().get_element_by_id(id).unwrap();
+            frame_element.set_inner_html(text);
+        }
+
+        set_text("frame", &format!("Frame {}", self.time));
+        set_text("kills", &format!("Kills {}", self.player.kills));
 
         Ok(())
     }

@@ -7,7 +7,14 @@
     </head>
     <body>
         <h1>shooter-rust-wasm</h1>
-        <canvas id="canvas" width="480" height="480"></canvas>
+        <div style="position: relative; height: 480px;">
+            <canvas id="canvas" width="480" height="480" style="position: absolute"></canvas>
+            <div style="position: absolute; left: 500px; top: 0px;">
+                <div id="frame">Frame: 1</div>
+                <div id="score">Score: 1</div>
+                <div id="kills">Kills: 1</div>
+            </div>
+        </div>
         <hr>
         <p>Source on <a href="https://github.com/msakuta/shooter-rust-wasm">GitHub</a>.</p>
     </body>

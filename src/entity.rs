@@ -109,7 +109,7 @@ impl Entity {
 pub struct Player {
     pub base: Entity,
     pub score: u32,
-    // pub kills: u32,
+    pub kills: u32,
     // pub power: u32,
     // pub lives: u32,
     // /// invincibility time caused by death or bomb

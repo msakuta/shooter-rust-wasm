@@ -22,7 +22,7 @@ mod entity;
 mod xor128;
 
 use crate::consts::*;
-use crate::entity::{BulletBase, Enemy, EnemyBase, Entity, Player, Projectile};
+use crate::entity::{Assets, BulletBase, Enemy, EnemyBase, Entity, Player, Projectile};
 use crate::xor128::Xor128;
 
 #[wasm_bindgen]
@@ -70,14 +70,7 @@ pub struct ShooterState {
     up_pressed: bool,
     down_pressed: bool,
 
-    world_transform: Matrix4<f64>,
-    texture: Rc<WebGlTexture>,
-    player_texture: Rc<WebGlTexture>,
-    bullet_texture: Rc<WebGlTexture>,
-    rect_buffer: Option<WebGlBuffer>,
-    vertex_position: u32,
-    texture_loc: Option<WebGlUniformLocation>,
-    transform_loc: Option<WebGlUniformLocation>,
+    assets: Assets,
 }
 
 #[wasm_bindgen]
@@ -126,15 +119,17 @@ impl ShooterState {
             right_pressed: false,
             up_pressed: false,
             down_pressed: false,
-            world_transform: Matrix4::from_translation(Vector3::new(-1., -1., 0.))
-                * &Matrix4::from_nonuniform_scale(2. / FWIDTH, 2. / FHEIGHT, 1.),
-            texture: load_texture_local("enemy")?,
-            player_texture: load_texture_local("player")?,
-            bullet_texture: load_texture_local("bullet")?,
-            rect_buffer: None,
-            vertex_position: 0,
-            texture_loc: None,
-            transform_loc: None,
+            assets: Assets {
+                world_transform: Matrix4::from_translation(Vector3::new(-1., -1., 0.))
+                    * &Matrix4::from_nonuniform_scale(2. / FWIDTH, 2. / FHEIGHT, 1.),
+                texture: load_texture_local("enemy")?,
+                player_texture: load_texture_local("player")?,
+                bullet_texture: load_texture_local("bullet")?,
+                rect_buffer: None,
+                vertex_position: 0,
+                texture_loc: None,
+                transform_loc: None,
+            },
         })
     }
 
@@ -198,14 +193,17 @@ impl ShooterState {
         let program = link_program(&context, &vert_shader, &frag_shader)?;
         context.use_program(Some(&program));
 
-        self.texture_loc = context.get_uniform_location(&program, "texture");
-        self.transform_loc = context.get_uniform_location(&program, "transform");
-        console_log!("transform_loc: {}", self.transform_loc.is_some());
+        self.assets.texture_loc = context.get_uniform_location(&program, "texture");
+        self.assets.transform_loc = context.get_uniform_location(&program, "transform");
+        console_log!(
+            "assets.transform_loc: {}",
+            self.assets.transform_loc.is_some()
+        );
 
         // Tell WebGL we want to affect texture unit 0
         context.active_texture(WebGlRenderingContext::TEXTURE0);
 
-        context.uniform1i(self.texture_loc.as_ref(), 0);
+        context.uniform1i(self.assets.texture_loc.as_ref(), 0);
 
         context.enable(WebGlRenderingContext::BLEND);
         context.blend_equation(WebGlRenderingContext::FUNC_ADD);
@@ -214,8 +212,8 @@ impl ShooterState {
             WebGlRenderingContext::ONE_MINUS_SRC_ALPHA,
         );
 
-        self.vertex_position = context.get_attrib_location(&program, "vertexData") as u32;
-        console_log!("vertex_position: {}", self.vertex_position);
+        self.assets.vertex_position = context.get_attrib_location(&program, "vertexData") as u32;
+        console_log!("vertex_position: {}", self.assets.vertex_position);
 
         let rect_vertices: [f32; 8] = [1., 1., -1., 1., -1., -1., 1., -1.];
 
@@ -243,7 +241,7 @@ impl ShooterState {
             Ok(buffer)
         };
 
-        self.rect_buffer = Some(vertex_buffer_data(&rect_vertices)?);
+        self.assets.rect_buffer = Some(vertex_buffer_data(&rect_vertices)?);
 
         let mut random = Xor128::new(3232132);
 
@@ -311,24 +309,27 @@ impl ShooterState {
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
         // Bind the texture to texture unit 0
-        context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*self.texture));
+        context.bind_texture(
+            WebGlRenderingContext::TEXTURE_2D,
+            Some(&*self.assets.texture),
+        );
 
         context.bind_buffer(
             WebGlRenderingContext::ARRAY_BUFFER,
-            Some(self.rect_buffer.as_ref().unwrap()),
+            Some(self.assets.rect_buffer.as_ref().unwrap()),
         );
         context.vertex_attrib_pointer_with_i32(
-            self.vertex_position,
+            self.assets.vertex_position,
             2,
             WebGlRenderingContext::FLOAT,
             false,
             0,
             0,
         );
-        context.enable_vertex_attrib_array(self.vertex_position);
+        context.enable_vertex_attrib_array(self.assets.vertex_position);
 
         for enemy in &self.enemies {
-            enemy.draw(self, &context, &());
+            enemy.draw(self, &context, &self.assets);
         }
 
         let mut enemies = std::mem::take(&mut self.enemies);
@@ -339,13 +340,13 @@ impl ShooterState {
 
         context.bind_texture(
             WebGlRenderingContext::TEXTURE_2D,
-            Some(&*self.bullet_texture),
+            Some(&*self.assets.bullet_texture),
         );
 
         self.bullets = std::mem::take(&mut self.bullets)
             .into_iter()
             .filter_map(|(id, mut bullet)| {
-                bullet.draw(self, &context, &());
+                bullet.draw(self, &context, &self.assets);
                 if let Some(reason) = bullet.animate_bullet(&mut self.enemies, &mut self.player) {
                     console_log!(
                         "deathreason: {:?}, pos: {:?}",
@@ -373,7 +374,7 @@ impl ShooterState {
 
         context.bind_texture(
             WebGlRenderingContext::TEXTURE_2D,
-            Some(&*self.player_texture),
+            Some(&*self.assets.player_texture),
         );
         let translation = Matrix4::from_translation(Vector3::new(
             self.player.base.pos[0],
@@ -382,13 +383,13 @@ impl ShooterState {
         ));
         let scale_mat = Matrix4::from_nonuniform_scale(PLAYER_SIZE, PLAYER_SIZE, 1.);
         let rotation = Matrix4::from_angle_z(Rad(0.));
-        let transform = &self.world_transform
+        let transform = &self.assets.world_transform
             * &translation
             * &rotation
             * &scale_mat
             * &Matrix4::from_nonuniform_scale(1., -1., 1.);
         context.uniform_matrix4fv_with_f32_array(
-            self.transform_loc.as_ref(),
+            self.assets.transform_loc.as_ref(),
             false,
             <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform.cast().unwrap()),
         );

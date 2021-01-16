@@ -3,7 +3,8 @@ use core::f64;
 use crate::consts::*;
 use crate::ShooterState;
 use cgmath::{Matrix4, Rad, Vector3};
-use web_sys::{WebGlRenderingContext as GL, WebGlTexture};
+use std::rc::Rc;
+use web_sys::{WebGlBuffer, WebGlRenderingContext as GL, WebGlTexture, WebGlUniformLocation};
 
 /// The base structure of all Entities.  Implements common methods.
 pub struct Entity {
@@ -74,7 +75,7 @@ impl Entity {
 
     pub fn draw_tex(
         &self,
-        state: &ShooterState,
+        assets: &Assets,
         context: &GL,
         texture: &WebGlTexture,
         scale: Option<f64>,
@@ -84,9 +85,9 @@ impl Entity {
         let scale_mat = Matrix4::from_scale(scale.unwrap_or(1.));
         let rotation = Matrix4::from_angle_z(Rad(self.rotation as f64));
         let flip = Matrix4::from_nonuniform_scale(1., -1., 1.);
-        let transform = state.world_transform * &translation * &scale_mat * &rotation * &flip;
+        let transform = assets.world_transform * &translation * &scale_mat * &rotation * &flip;
         context.uniform_matrix4fv_with_f32_array(
-            state.transform_loc.as_ref(),
+            assets.transform_loc.as_ref(),
             false,
             <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform.cast().unwrap()),
         );
@@ -136,7 +137,17 @@ pub enum Enemy {
     Enemy1(EnemyBase),
 }
 
-type Assets = ();
+pub struct Assets {
+    pub world_transform: Matrix4<f64>,
+
+    pub texture: Rc<WebGlTexture>,
+    pub player_texture: Rc<WebGlTexture>,
+    pub bullet_texture: Rc<WebGlTexture>,
+    pub rect_buffer: Option<WebGlBuffer>,
+    pub vertex_position: u32,
+    pub texture_loc: Option<WebGlUniformLocation>,
+    pub transform_loc: Option<WebGlUniformLocation>,
+}
 
 impl Enemy {
     pub fn get_base(&self) -> &Entity {
@@ -153,10 +164,10 @@ impl Enemy {
 
     pub fn draw(&self, state: &ShooterState, context: &GL, assets: &Assets) {
         self.get_base().draw_tex(
-            state,
+            assets,
             context,
             match self {
-                Enemy::Enemy1(_) => &state.texture,
+                Enemy::Enemy1(_) => &assets.texture,
             },
             Some(ENEMY_SIZE),
         );
@@ -237,10 +248,10 @@ impl Projectile {
 
     pub fn draw(&self, state: &ShooterState, c: &GL, assets: &Assets) {
         self.get_base().0.draw_tex(
-            state,
+            assets,
             c,
             match self {
-                Projectile::Bullet(_) => &state.bullet_texture,
+                Projectile::Bullet(_) => &assets.bullet_texture,
             },
             Some(BULLET_SIZE),
         );

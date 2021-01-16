@@ -25,4 +25,14 @@ impl Xor128 {
     pub fn next(&mut self) -> f64 {
         self.nexti() as f64 / 0xffffffffu32 as f64
     }
+
+    /// Dumb implementation of gen_range
+    pub fn gen_range(&mut self, low: u32, high: u32) -> u32 {
+        self.nexti() % (high - low) + low
+    }
+
+    /// Dumb implementation of gen_range
+    pub fn gen_rangef(&mut self, low: f64, high: f64) -> f64 {
+        self.next() * (high - low) + low
+    }
 }

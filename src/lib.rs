@@ -63,6 +63,7 @@ pub struct ShooterState {
     player: Player,
     enemies: Vec<Enemy>,
     bullets: HashMap<u32, Projectile>,
+    rng: Xor128,
 
     shoot_pressed: bool,
     left_pressed: bool,
@@ -106,6 +107,7 @@ impl ShooterState {
         let mut id_gen = 0;
         let player = Player {
             base: Entity::new(&mut id_gen, [FWIDTH / 2., FHEIGHT / 2.], [0., 0.]),
+            score: 0,
         };
 
         Ok(Self {
@@ -114,6 +116,7 @@ impl ShooterState {
             player,
             enemies: vec![],
             bullets: HashMap::new(),
+            rng: Xor128::new(3232132),
             shoot_pressed: false,
             left_pressed: false,
             right_pressed: false,
@@ -243,20 +246,6 @@ impl ShooterState {
 
         self.assets.rect_buffer = Some(vertex_buffer_data(&rect_vertices)?);
 
-        let mut random = Xor128::new(3232132);
-
-        for _ in 0..10 {
-            let mut enemy = Enemy::Enemy1(EnemyBase::new(
-                &mut self.id_gen,
-                [random.next(), random.next()],
-                [(random.next() - 0.5) * 1., (random.next() - 0.5) * 1.],
-            ));
-            enemy.get_base_mut().0.rotation = random.next() as f32 * std::f32::consts::PI * 2.;
-            enemy.get_base_mut().0.angular_velocity =
-                (random.next() - 0.5) as f32 * std::f32::consts::PI * 0.1;
-            self.enemies.push(enemy);
-        }
-
         context.clear_color(0.0, 0.0, 0.5, 1.0);
 
         Ok(())
@@ -278,6 +267,54 @@ impl ShooterState {
         // requestAnimationFrame callback has fired.
         self.time += 1;
         // console_log!("requestAnimationFrame has been called {} times.", i);
+
+        let dice = 256;
+        let rng = &mut self.rng;
+        let mut i = rng.gen_range(0, dice);
+        let enemy_count = self.enemies.len();
+        let gen_amount = 4;
+        while i < gen_amount {
+            let allweights = if enemy_count < 128 {
+                if self.player.score < 1024 {
+                    64
+                } else {
+                    16
+                }
+            } else {
+                0
+            };
+            if 0 < allweights {
+                let dice = rng.gen_range(0, allweights);
+                let (pos, velo) = match rng.gen_range(0, 3) {
+                    0 => {
+                        // top
+                        (
+                            [rng.gen_rangef(0., WIDTH as f64), 0.],
+                            [rng.next() - 0.5, rng.next() * 0.5],
+                        )
+                    }
+                    1 => {
+                        // left
+                        (
+                            [0., rng.gen_rangef(0., WIDTH as f64)],
+                            [rng.next() * 0.5, rng.next() - 0.5],
+                        )
+                    }
+                    2 => {
+                        // right
+                        (
+                            [WIDTH as f64, rng.gen_rangef(0., WIDTH as f64)],
+                            [-rng.next() * 0.5, rng.next() - 0.5],
+                        )
+                    }
+                    _ => panic!("RNG returned out of range"),
+                };
+                self.enemies.push(Enemy::Enemy1(
+                    EnemyBase::new(&mut self.id_gen, pos, velo).health(3),
+                ));
+            }
+            i += rng.gen_range(0, dice);
+        }
 
         if self.shoot_pressed {
             if self.time % 5 == 0 {
@@ -326,11 +363,16 @@ impl ShooterState {
             enemy.draw(self, &context, &self.assets);
         }
 
-        let mut enemies = std::mem::take(&mut self.enemies);
-        for enemy in &mut enemies {
-            enemy.animate(self);
-        }
-        self.enemies = enemies;
+        self.enemies = std::mem::take(&mut self.enemies)
+            .into_iter()
+            .filter_map(|mut enemy| {
+                if let Some(_death_reason) = enemy.animate(self) {
+                    None
+                } else {
+                    Some(enemy)
+                }
+            })
+            .collect();
 
         self.bullets = std::mem::take(&mut self.bullets)
             .into_iter()

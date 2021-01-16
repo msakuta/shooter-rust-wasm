@@ -49,13 +49,9 @@ impl Entity {
     /// Returns None if the Entity survived this frame.
     /// Otherwise returns Some(reason) where reason is DeathReason.
     pub fn animate(&mut self) -> Option<DeathReason> {
-        fn wrap(v: f64, size: f64) -> f64 {
-            v - (v / size).floor() * size
-        }
-
         let pos = &mut self.pos;
         for (i, size) in (0..2).zip([WIDTH, HEIGHT].iter()) {
-            pos[i] = wrap(pos[i] + self.velo[i], *size as f64);
+            pos[i] += self.velo[i];
         }
         self.rotation += self.angular_velocity;
         if self.health <= 0 {
@@ -112,7 +108,7 @@ impl Entity {
 
 pub struct Player {
     pub base: Entity,
-    // pub score: u32,
+    pub score: u32,
     // pub kills: u32,
     // pub power: u32,
     // pub lives: u32,
@@ -160,6 +156,15 @@ impl Enemy {
     pub fn get_base_mut(&mut self) -> &mut EnemyBase {
         match self {
             Enemy::Enemy1(ref mut base) => base,
+        }
+    }
+
+    pub fn damage(&mut self, val: i32) {
+        match self {
+            Enemy::Enemy1(ref mut base) => {
+                base.0.health -= val;
+                console_log!("damaged: {}", base.0.health);
+            }
         }
     }
 
@@ -219,7 +224,7 @@ impl Projectile {
         let &mut BulletBase(ent) = &mut base;
         for enemy in enemies.iter_mut() {
             if enemy.test_hit(bbox) {
-                // enemy.damage(ent.health);
+                enemy.damage(ent.health);
                 ent.health = 0;
                 break;
             }

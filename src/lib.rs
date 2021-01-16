@@ -1,10 +1,5 @@
-mod consts;
-mod entity;
-mod xor128;
-
-use crate::entity::{Enemy, EnemyBase, Entity};
-use crate::xor128::Xor128;
 use cgmath::{Matrix4, Rad, Vector3};
+use std::collections::HashMap;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -21,6 +16,14 @@ macro_rules! console_log {
         crate::log($fmt)
     }
 }
+
+mod consts;
+mod entity;
+mod xor128;
+
+use crate::consts::*;
+use crate::entity::{BulletBase, Enemy, EnemyBase, Entity, Projectile};
+use crate::xor128::Xor128;
 
 #[wasm_bindgen]
 extern "C" {
@@ -59,7 +62,7 @@ pub struct ShooterState {
     id_gen: u32,
     player: [f64; 2],
     enemies: Vec<Enemy>,
-    bullets: Vec<Bullet>,
+    bullets: HashMap<u32, Projectile>,
 
     shoot_pressed: bool,
     left_pressed: bool,
@@ -67,6 +70,7 @@ pub struct ShooterState {
     up_pressed: bool,
     down_pressed: bool,
 
+    world_transform: Matrix4<f64>,
     texture: Rc<WebGlTexture>,
     player_texture: Rc<WebGlTexture>,
     bullet_texture: Rc<WebGlTexture>,
@@ -109,14 +113,16 @@ impl ShooterState {
         Ok(Self {
             time: 0,
             id_gen: 0,
-            player: [0., -3.],
+            player: [FWIDTH / 2., FHEIGHT / 2.],
             enemies: vec![],
-            bullets: vec![],
+            bullets: HashMap::new(),
             shoot_pressed: false,
             left_pressed: false,
             right_pressed: false,
             up_pressed: false,
             down_pressed: false,
+            world_transform: Matrix4::from_translation(Vector3::new(-1., -1., 0.))
+                * &Matrix4::from_nonuniform_scale(2. / FWIDTH, 2. / FHEIGHT, 1.),
             texture: load_texture_local("enemy")?,
             player_texture: load_texture_local("player")?,
             bullet_texture: load_texture_local("bullet")?,
@@ -240,7 +246,7 @@ impl ShooterState {
             let mut enemy = Enemy::Enemy1(EnemyBase::new(
                 &mut self.id_gen,
                 [random.next(), random.next()],
-                [(random.next() - 0.5) * 0.1, (random.next() - 0.5) * 0.1],
+                [(random.next() - 0.5) * 1., (random.next() - 0.5) * 1.],
             ));
             enemy.get_base_mut().0.rotation = random.next() as f32 * std::f32::consts::PI * 2.;
             enemy.get_base_mut().0.angular_velocity =
@@ -272,28 +278,27 @@ impl ShooterState {
 
         if self.shoot_pressed {
             if self.time % 5 == 0 {
-                self.bullets.push(Bullet {
-                    pos: self.player,
-                    velo: [0., 0.3],
-                    rotation: 0.,
-                });
+                let speed = BULLET_SPEED;
+                let ent = Entity::new(&mut self.id_gen, self.player, [0., speed]).rotation(0.);
+                self.bullets
+                    .insert(ent.id, Projectile::Bullet(BulletBase(ent)));
             }
         }
 
         let scale = 0.1;
         let size = 1. / scale;
 
-        if self.left_pressed && -size < self.player[0] - 0.1 {
-            self.player[0] -= 0.1;
+        if self.left_pressed && 0. < self.player[0] - PLAYER_SPEED {
+            self.player[0] -= PLAYER_SPEED;
         }
-        if self.right_pressed && self.player[0] + 0.1 < size {
-            self.player[0] += 0.1;
+        if self.right_pressed && self.player[0] + PLAYER_SPEED < FWIDTH {
+            self.player[0] += PLAYER_SPEED;
         }
-        if self.down_pressed && -size < self.player[1] - 0.1 {
-            self.player[1] -= 0.1;
+        if self.down_pressed && 0. < self.player[1] - PLAYER_SPEED {
+            self.player[1] -= PLAYER_SPEED;
         }
-        if self.up_pressed && self.player[1] + 0.1 < size {
-            self.player[1] += 0.1;
+        if self.up_pressed && self.player[1] + PLAYER_SPEED < FHEIGHT {
+            self.player[1] += PLAYER_SPEED;
         }
 
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
@@ -332,56 +337,50 @@ impl ShooterState {
 
         self.bullets = std::mem::take(&mut self.bullets)
             .into_iter()
-            .filter_map(|mut bullet| {
-                let angle = bullet.rotation as f32;
-                let scale_mat = Matrix4::from_scale(scale as f32);
-                let rotation = Matrix4::from_angle_z(Rad(angle));
-                let translation = Matrix4::from_translation(Vector3::new(
-                    bullet.pos[0] as f32,
-                    bullet.pos[1] as f32,
-                    0.,
-                ));
-                let raw_scale_mat = Matrix4::from_nonuniform_scale(0.5, -0.5, 1.);
-                let transform = &scale_mat * &translation * &rotation * &raw_scale_mat;
-                context.uniform_matrix4fv_with_f32_array(
-                    self.transform_loc.as_ref(),
-                    false,
-                    <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform),
-                );
-
-                context.draw_arrays(WebGlRenderingContext::TRIANGLE_FAN, 0, 4);
-
-                bullet.pos[0] = bullet.pos[0] + bullet.velo[0];
-                bullet.pos[1] = bullet.pos[1] + bullet.velo[1];
-                if -size < bullet.pos[0]
-                    && bullet.pos[0] < size
-                    && -size < bullet.pos[1]
-                    && bullet.pos[1] < size
-                {
-                    Some(bullet)
-                } else {
+            .filter_map(|(id, mut bullet)| {
+                bullet.draw(self, &context, &());
+                if let Some(reason) = bullet.animate_bullet(&mut self.enemies, &mut self.player) {
+                    console_log!(
+                        "deathreason: {:?}, pos: {:?}",
+                        reason,
+                        bullet.get_base().0.pos
+                    );
                     None
+                } else {
+                    Some((id, bullet))
                 }
+
+                // bullet.pos[0] = bullet.pos[0] + bullet.velo[0];
+                // bullet.pos[1] = bullet.pos[1] + bullet.velo[1];
+                // if -size < bullet.pos[0]
+                //     && bullet.pos[0] < size
+                //     && -size < bullet.pos[1]
+                //     && bullet.pos[1] < size
+                // {
+                //     Some(bullet)
+                // } else {
+                //     None
+                // }
             })
-            .collect::<Vec<_>>();
+            .collect::<HashMap<_, _>>();
 
         context.bind_texture(
             WebGlRenderingContext::TEXTURE_2D,
             Some(&*self.player_texture),
         );
-        let scale_mat = Matrix4::from_nonuniform_scale(scale as f32, scale as f32, 1.);
+        let translation =
+            Matrix4::from_translation(Vector3::new(self.player[0], self.player[1], 0.));
+        let scale_mat = Matrix4::from_nonuniform_scale(PLAYER_SIZE, PLAYER_SIZE, 1.);
         let rotation = Matrix4::from_angle_z(Rad(0.));
-        let translation = Matrix4::from_translation(Vector3::new(
-            self.player[0] as f32,
-            self.player[1] as f32,
-            0.,
-        ));
-        let transform =
-            &scale_mat * &translation * &rotation * &Matrix4::from_nonuniform_scale(1., -1., 1.);
+        let transform = &self.world_transform
+            * &translation
+            * &rotation
+            * &scale_mat
+            * &Matrix4::from_nonuniform_scale(1., -1., 1.);
         context.uniform_matrix4fv_with_f32_array(
             self.transform_loc.as_ref(),
             false,
-            <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform),
+            <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform.cast().unwrap()),
         );
         context.draw_arrays(WebGlRenderingContext::TRIANGLE_FAN, 0, 4);
 

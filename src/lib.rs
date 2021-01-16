@@ -22,7 +22,7 @@ mod entity;
 mod xor128;
 
 use crate::consts::*;
-use crate::entity::{BulletBase, Enemy, EnemyBase, Entity, Projectile};
+use crate::entity::{BulletBase, Enemy, EnemyBase, Entity, Player, Projectile};
 use crate::xor128::Xor128;
 
 #[wasm_bindgen]
@@ -60,7 +60,7 @@ struct Bullet {
 pub struct ShooterState {
     time: usize,
     id_gen: u32,
-    player: [f64; 2],
+    player: Player,
     enemies: Vec<Enemy>,
     bullets: HashMap<u32, Projectile>,
 
@@ -110,10 +110,15 @@ impl ShooterState {
             }
         };
 
+        let mut id_gen = 0;
+        let player = Player {
+            base: Entity::new(&mut id_gen, [FWIDTH / 2., FHEIGHT / 2.], [0., 0.]),
+        };
+
         Ok(Self {
             time: 0,
-            id_gen: 0,
-            player: [FWIDTH / 2., FHEIGHT / 2.],
+            id_gen,
+            player,
             enemies: vec![],
             bullets: HashMap::new(),
             shoot_pressed: false,
@@ -279,7 +284,8 @@ impl ShooterState {
         if self.shoot_pressed {
             if self.time % 5 == 0 {
                 let speed = BULLET_SPEED;
-                let ent = Entity::new(&mut self.id_gen, self.player, [0., speed]).rotation(0.);
+                let ent =
+                    Entity::new(&mut self.id_gen, self.player.base.pos, [0., speed]).rotation(0.);
                 self.bullets
                     .insert(ent.id, Projectile::Bullet(BulletBase(ent)));
             }
@@ -288,17 +294,18 @@ impl ShooterState {
         let scale = 0.1;
         let size = 1. / scale;
 
-        if self.left_pressed && 0. < self.player[0] - PLAYER_SPEED {
-            self.player[0] -= PLAYER_SPEED;
+        let player_pos = &mut self.player.base.pos;
+        if self.left_pressed && 0. < player_pos[0] - PLAYER_SPEED {
+            player_pos[0] -= PLAYER_SPEED;
         }
-        if self.right_pressed && self.player[0] + PLAYER_SPEED < FWIDTH {
-            self.player[0] += PLAYER_SPEED;
+        if self.right_pressed && player_pos[0] + PLAYER_SPEED < FWIDTH {
+            player_pos[0] += PLAYER_SPEED;
         }
-        if self.down_pressed && 0. < self.player[1] - PLAYER_SPEED {
-            self.player[1] -= PLAYER_SPEED;
+        if self.down_pressed && 0. < player_pos[1] - PLAYER_SPEED {
+            player_pos[1] -= PLAYER_SPEED;
         }
-        if self.up_pressed && self.player[1] + PLAYER_SPEED < FHEIGHT {
-            self.player[1] += PLAYER_SPEED;
+        if self.up_pressed && player_pos[1] + PLAYER_SPEED < FHEIGHT {
+            player_pos[1] += PLAYER_SPEED;
         }
 
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
@@ -368,8 +375,11 @@ impl ShooterState {
             WebGlRenderingContext::TEXTURE_2D,
             Some(&*self.player_texture),
         );
-        let translation =
-            Matrix4::from_translation(Vector3::new(self.player[0], self.player[1], 0.));
+        let translation = Matrix4::from_translation(Vector3::new(
+            self.player.base.pos[0],
+            self.player.base.pos[1],
+            0.,
+        ));
         let scale_mat = Matrix4::from_nonuniform_scale(PLAYER_SIZE, PLAYER_SIZE, 1.);
         let rotation = Matrix4::from_angle_z(Rad(0.));
         let transform = &self.world_transform

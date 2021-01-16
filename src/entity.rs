@@ -108,6 +108,17 @@ impl Entity {
     }
 }
 
+pub struct Player {
+    pub base: Entity,
+    // pub score: u32,
+    // pub kills: u32,
+    // pub power: u32,
+    // pub lives: u32,
+    // /// invincibility time caused by death or bomb
+    // pub invtime: u32,
+    // pub cooldown: u32,
+}
+
 pub struct EnemyBase(pub Entity, pub i32);
 
 impl EnemyBase {
@@ -190,7 +201,7 @@ impl Projectile {
     fn animate_player_bullet(
         mut base: &mut BulletBase,
         enemies: &mut Vec<Enemy>,
-        mut _player: &mut [f64; 2],
+        mut _player: &mut Player,
     ) -> Option<DeathReason> {
         let bbox = Self::get_bb_base(base);
         let &mut BulletBase(ent) = &mut base;
@@ -207,7 +218,7 @@ impl Projectile {
     pub fn animate_bullet(
         &mut self,
         enemies: &mut Vec<Enemy>,
-        player: &mut [f64; 2],
+        player: &mut Player,
     ) -> Option<DeathReason> {
         match self {
             Projectile::Bullet(base) => Self::animate_player_bullet(base, enemies, player),

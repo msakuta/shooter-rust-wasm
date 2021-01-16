@@ -308,12 +308,6 @@ impl ShooterState {
 
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
-        // Bind the texture to texture unit 0
-        context.bind_texture(
-            WebGlRenderingContext::TEXTURE_2D,
-            Some(&*self.assets.texture),
-        );
-
         context.bind_buffer(
             WebGlRenderingContext::ARRAY_BUFFER,
             Some(self.assets.rect_buffer.as_ref().unwrap()),
@@ -337,11 +331,6 @@ impl ShooterState {
             enemy.animate(self);
         }
         self.enemies = enemies;
-
-        context.bind_texture(
-            WebGlRenderingContext::TEXTURE_2D,
-            Some(&*self.assets.bullet_texture),
-        );
 
         self.bullets = std::mem::take(&mut self.bullets)
             .into_iter()
@@ -372,28 +361,12 @@ impl ShooterState {
             })
             .collect::<HashMap<_, _>>();
 
-        context.bind_texture(
-            WebGlRenderingContext::TEXTURE_2D,
-            Some(&*self.assets.player_texture),
+        self.player.base.draw_tex(
+            &self.assets,
+            &context,
+            &self.assets.player_texture,
+            Some(PLAYER_SIZE),
         );
-        let translation = Matrix4::from_translation(Vector3::new(
-            self.player.base.pos[0],
-            self.player.base.pos[1],
-            0.,
-        ));
-        let scale_mat = Matrix4::from_nonuniform_scale(PLAYER_SIZE, PLAYER_SIZE, 1.);
-        let rotation = Matrix4::from_angle_z(Rad(0.));
-        let transform = &self.assets.world_transform
-            * &translation
-            * &rotation
-            * &scale_mat
-            * &Matrix4::from_nonuniform_scale(1., -1., 1.);
-        context.uniform_matrix4fv_with_f32_array(
-            self.assets.transform_loc.as_ref(),
-            false,
-            <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform.cast().unwrap()),
-        );
-        context.draw_arrays(WebGlRenderingContext::TRIANGLE_FAN, 0, 4);
 
         Ok(())
     }

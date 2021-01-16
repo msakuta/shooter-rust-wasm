@@ -80,6 +80,7 @@ impl Entity {
         texture: &WebGlTexture,
         scale: Option<f64>,
     ) {
+        context.bind_texture(GL::TEXTURE_2D, Some(&texture));
         let pos = &self.pos;
         let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], 0.));
         let scale_mat = Matrix4::from_scale(scale.unwrap_or(1.));

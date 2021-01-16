@@ -81,8 +81,7 @@ impl Entity {
         let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], 0.));
         let scale_mat = Matrix4::from_scale(scale.unwrap_or(1.));
         let rotation = Matrix4::from_angle_z(Rad(self.rotation as f64));
-        let flip = Matrix4::from_nonuniform_scale(1., -1., 1.);
-        let transform = assets.world_transform * &translation * &scale_mat * &rotation * &flip;
+        let transform = assets.world_transform * &translation * &scale_mat * &rotation;
         context.uniform_matrix4fv_with_f32_array(
             assets.transform_loc.as_ref(),
             false,
@@ -128,13 +127,13 @@ impl Player {
         }
     }
 
-    pub fn move_down(&mut self) {
+    pub fn move_up(&mut self) {
         if PLAYER_SIZE <= self.base.pos[1] - PLAYER_SPEED {
             self.base.pos[1] -= PLAYER_SPEED;
         }
     }
 
-    pub fn move_up(&mut self) {
+    pub fn move_down(&mut self) {
         if self.base.pos[1] + PLAYER_SPEED < HEIGHT as f64 - PLAYER_SIZE {
             self.base.pos[1] += PLAYER_SPEED;
         }

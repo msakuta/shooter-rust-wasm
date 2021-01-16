@@ -124,8 +124,8 @@ impl ShooterState {
             up_pressed: false,
             down_pressed: false,
             assets: Assets {
-                world_transform: Matrix4::from_translation(Vector3::new(-1., -1., 0.))
-                    * &Matrix4::from_nonuniform_scale(2. / FWIDTH, 2. / FHEIGHT, 1.),
+                world_transform: Matrix4::from_translation(Vector3::new(-1., 1., 0.))
+                    * &Matrix4::from_nonuniform_scale(2. / FWIDTH, -2. / FHEIGHT, 1.),
                 enemy_tex: load_texture_local("enemy")?,
                 boss_tex: load_texture_local("boss")?,
                 player_texture: load_texture_local("player")?,
@@ -367,8 +367,8 @@ impl ShooterState {
                 for i in -1 - level..2 + level {
                     let speed = BULLET_SPEED;
                     let ent =
-                        Entity::new(&mut self.id_gen, self.player.base.pos, [i as f64, speed])
-                            .rotation(-(i as f32).atan2(speed as f32));
+                        Entity::new(&mut self.id_gen, self.player.base.pos, [i as f64, -speed])
+                            .rotation((i as f32).atan2(speed as f32));
                     self.shots_bullet += 1;
                     self.bullets
                         .insert(ent.id, Projectile::Bullet(BulletBase(ent)));

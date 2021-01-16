@@ -62,6 +62,7 @@ pub struct ShooterState {
     enemies: Vec<Enemy>,
     bullets: HashMap<u32, Projectile>,
     rng: Xor128,
+    shots_bullet: usize,
 
     shoot_pressed: bool,
     left_pressed: bool,
@@ -103,11 +104,11 @@ impl ShooterState {
         };
 
         let mut id_gen = 0;
-        let player = Player {
-            base: Entity::new(&mut id_gen, [FWIDTH / 2., FHEIGHT / 2.], [0., 0.]),
-            score: 0,
-            kills: 0,
-        };
+        let player = Player::new(Entity::new(
+            &mut id_gen,
+            [FWIDTH / 2., FHEIGHT / 2.],
+            [0., 0.],
+        ));
 
         Ok(Self {
             time: 0,
@@ -116,6 +117,7 @@ impl ShooterState {
             enemies: vec![],
             bullets: HashMap::new(),
             rng: Xor128::new(3232132),
+            shots_bullet: 0,
             shoot_pressed: false,
             left_pressed: false,
             right_pressed: false,
@@ -343,28 +345,40 @@ impl ShooterState {
             i += rng.gen_range(0, dice);
         }
 
-        if self.shoot_pressed {
-            if self.time % 5 == 0 {
-                let speed = BULLET_SPEED;
-                let ent =
-                    Entity::new(&mut self.id_gen, self.player.base.pos, [0., speed]).rotation(0.);
-                self.bullets
-                    .insert(ent.id, Projectile::Bullet(BulletBase(ent)));
-            }
+        if self.up_pressed {
+            self.player.move_up()
+        }
+        if self.down_pressed {
+            self.player.move_down()
+        }
+        if self.left_pressed {
+            self.player.move_left()
+        }
+        if self.right_pressed {
+            self.player.move_right()
         }
 
-        let player_pos = &mut self.player.base.pos;
-        if self.left_pressed && 0. < player_pos[0] - PLAYER_SPEED {
-            player_pos[0] -= PLAYER_SPEED;
+        if self.shoot_pressed && self.player.cooldown == 0 {
+            let shoot_period = 5;
+
+            if self.time % 5 == 0 {
+                let level = self.player.power_level() as i32;
+                self.player.cooldown += shoot_period;
+                for i in -1 - level..2 + level {
+                    let speed = BULLET_SPEED;
+                    let ent =
+                        Entity::new(&mut self.id_gen, self.player.base.pos, [i as f64, speed])
+                            .rotation(-(i as f32).atan2(speed as f32));
+                    self.shots_bullet += 1;
+                    self.bullets
+                        .insert(ent.id, Projectile::Bullet(BulletBase(ent)));
+                }
+            }
         }
-        if self.right_pressed && player_pos[0] + PLAYER_SPEED < FWIDTH {
-            player_pos[0] += PLAYER_SPEED;
-        }
-        if self.down_pressed && 0. < player_pos[1] - PLAYER_SPEED {
-            player_pos[1] -= PLAYER_SPEED;
-        }
-        if self.up_pressed && player_pos[1] + PLAYER_SPEED < FHEIGHT {
-            player_pos[1] += PLAYER_SPEED;
+        if self.player.cooldown < 1 {
+            self.player.cooldown = 0;
+        } else {
+            self.player.cooldown -= 1;
         }
 
         context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
@@ -393,7 +407,7 @@ impl ShooterState {
                 if let Some(death_reason) = enemy.animate(self) {
                     if let DeathReason::Killed = death_reason {
                         self.player.kills += 1;
-                        self.player.score += 1;
+                        self.player.score += if enemy.is_boss() { 10 } else { 1 };
                     }
                     None
                 } else {
@@ -439,7 +453,9 @@ impl ShooterState {
         }
 
         set_text("frame", &format!("Frame {}", self.time));
+        set_text("score", &format!("Score {}", self.player.score));
         set_text("kills", &format!("Kills {}", self.player.kills));
+        set_text("shots", &format!("Shots {}", self.shots_bullet));
 
         Ok(())
     }

@@ -110,11 +110,64 @@ pub struct Player {
     pub base: Entity,
     pub score: u32,
     pub kills: u32,
-    // pub power: u32,
+    pub power: u32,
     // pub lives: u32,
     // /// invincibility time caused by death or bomb
     // pub invtime: u32,
-    // pub cooldown: u32,
+    pub cooldown: u32,
+}
+
+impl Player {
+    pub fn new(base: Entity) -> Self {
+        Self {
+            base,
+            score: 0,
+            kills: 0,
+            power: 0,
+            cooldown: 0,
+        }
+    }
+
+    pub fn move_down(&mut self) {
+        if PLAYER_SIZE <= self.base.pos[1] - PLAYER_SPEED {
+            self.base.pos[1] -= PLAYER_SPEED;
+        }
+    }
+
+    pub fn move_up(&mut self) {
+        if self.base.pos[1] + PLAYER_SPEED < HEIGHT as f64 - PLAYER_SIZE {
+            self.base.pos[1] += PLAYER_SPEED;
+        }
+    }
+
+    pub fn move_left(&mut self) {
+        if PLAYER_SIZE <= self.base.pos[0] - PLAYER_SPEED {
+            self.base.pos[0] -= PLAYER_SPEED;
+        }
+    }
+
+    pub fn move_right(&mut self) {
+        if self.base.pos[0] + PLAYER_SPEED < WIDTH as f64 - PLAYER_SIZE {
+            self.base.pos[0] += PLAYER_SPEED;
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.base.pos = [240., 400.];
+        self.score = 0;
+        self.kills = 0;
+        self.power = 0;
+        // self.lives = PLAYER_LIVES;
+        // self.invtime = 0;
+    }
+
+    pub fn power_level(&self) -> u32 {
+        self.power >> 4
+    }
+
+    pub fn difficulty_level(&self) -> u32 {
+        self.score / 256
+    }
 }
 
 pub struct EnemyBase(pub Entity, pub i32);
@@ -171,6 +224,22 @@ impl Enemy {
         }
     }
 
+    pub fn animate(&mut self, state: &mut ShooterState) -> Option<DeathReason> {
+        let x: u32 = state.rng.gen_range(0, 64);
+        if x == 0 {
+            let eb = Projectile::EnemyBullet(BulletBase(Entity::new(
+                &mut state.id_gen,
+                self.get_base().pos,
+                [state.rng.next() - 0.5, state.rng.next() - 0.5],
+            )));
+            state.bullets.insert(eb.get_id(), eb);
+        }
+
+        match self {
+            Enemy::Enemy1(ref mut base) | Enemy::Boss(ref mut base) => base.0.animate(),
+        }
+    }
+
     pub fn draw(&self, state: &ShooterState, context: &GL, assets: &Assets) {
         self.get_base().draw_tex(
             assets,
@@ -202,19 +271,10 @@ impl Enemy {
         ]
     }
 
-    pub fn animate(&mut self, state: &mut ShooterState) -> Option<DeathReason> {
-        let x: u32 = state.rng.gen_range(0, 64);
-        if x == 0 {
-            let eb = Projectile::EnemyBullet(BulletBase(Entity::new(
-                &mut state.id_gen,
-                self.get_base().pos,
-                [state.rng.next() - 0.5, state.rng.next() - 0.5],
-            )));
-            state.bullets.insert(eb.get_id(), eb);
-        }
-
+    pub fn is_boss(&self) -> bool {
         match self {
-            Enemy::Enemy1(ref mut base) | Enemy::Boss(ref mut base) => base.0.animate(),
+            Enemy::Boss(_) => true,
+            _ => false,
         }
     }
 }

@@ -2,6 +2,7 @@ import enemy from "../assets/enemy.png";
 import player from "../assets/player.png";
 import bullet from "../assets/bullet.png";
 import ebullet from "../assets/ebullet.png";
+import boss from "../assets/boss.png";
 
 // Note that a dynamic `import` statement here is required due to
 // webpack/webpack#6615, but in theory `import { greet } from './pkg';`
@@ -16,6 +17,7 @@ rust
       ["player", player],
       ["bullet", bullet],
       ["ebullet", ebullet],
+      ["boss", boss],
     ];
     let state = new module.ShooterState(image_assets);
 

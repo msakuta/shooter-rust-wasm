@@ -132,12 +132,14 @@ impl EnemyBase {
 
 pub enum Enemy {
     Enemy1(EnemyBase),
+    Boss(EnemyBase),
 }
 
 pub struct Assets {
     pub world_transform: Matrix4<f64>,
 
-    pub texture: Rc<WebGlTexture>,
+    pub enemy_tex: Rc<WebGlTexture>,
+    pub boss_tex: Rc<WebGlTexture>,
     pub player_texture: Rc<WebGlTexture>,
     pub bullet_texture: Rc<WebGlTexture>,
     pub enemy_bullet_texture: Rc<WebGlTexture>,
@@ -149,20 +151,20 @@ pub struct Assets {
 
 impl Enemy {
     pub fn get_base(&self) -> &Entity {
-        match &self {
-            &Enemy::Enemy1(base) => &base.0,
+        match self {
+            Enemy::Enemy1(base) | Enemy::Boss(base) => &base.0,
         }
     }
 
     pub fn get_base_mut(&mut self) -> &mut EnemyBase {
         match self {
-            Enemy::Enemy1(ref mut base) => base,
+            Enemy::Enemy1(ref mut base) | Enemy::Boss(ref mut base) => base,
         }
     }
 
     pub fn damage(&mut self, val: i32) {
         match self {
-            Enemy::Enemy1(ref mut base) => {
+            Enemy::Enemy1(ref mut base) | Enemy::Boss(ref mut base) => {
                 base.0.health -= val;
                 console_log!("damaged: {}", base.0.health);
             }
@@ -174,9 +176,13 @@ impl Enemy {
             assets,
             context,
             match self {
-                Enemy::Enemy1(_) => &assets.texture,
+                Enemy::Enemy1(_) => &assets.enemy_tex,
+                Enemy::Boss(_) => &assets.boss_tex,
             },
-            Some(ENEMY_SIZE),
+            Some(match self {
+                Enemy::Enemy1(_) => ENEMY_SIZE,
+                Enemy::Boss(_) => BOSS_SIZE,
+            }),
         );
     }
 
@@ -208,7 +214,7 @@ impl Enemy {
         }
 
         match self {
-            Enemy::Enemy1(ref mut base) => base.0.animate(),
+            Enemy::Enemy1(ref mut base) | Enemy::Boss(ref mut base) => base.0.animate(),
         }
     }
 }

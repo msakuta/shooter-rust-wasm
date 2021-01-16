@@ -124,7 +124,8 @@ impl ShooterState {
             assets: Assets {
                 world_transform: Matrix4::from_translation(Vector3::new(-1., -1., 0.))
                     * &Matrix4::from_nonuniform_scale(2. / FWIDTH, 2. / FHEIGHT, 1.),
-                texture: load_texture_local("enemy")?,
+                enemy_tex: load_texture_local("enemy")?,
+                boss_tex: load_texture_local("boss")?,
                 player_texture: load_texture_local("player")?,
                 bullet_texture: load_texture_local("bullet")?,
                 enemy_bullet_texture: load_texture_local("ebullet")?,
@@ -271,18 +272,41 @@ impl ShooterState {
         let dice = 256;
         let rng = &mut self.rng;
         let mut i = rng.gen_range(0, dice);
-        let enemy_count = self.enemies.len();
+        let [enemy_count, boss_count] = self.enemies.iter().fold([0; 2], |mut c, e| match e {
+            Enemy::Enemy1(_) => {
+                c[0] += 1;
+                c
+            }
+            Enemy::Boss(_) => {
+                c[1] += 1;
+                c
+            }
+        });
         let gen_amount = 4;
         while i < gen_amount {
-            let allweights = if enemy_count < 128 {
-                if self.player.score < 1024 {
-                    64
+            let weights = [
+                if enemy_count < 128 {
+                    if self.player.score < 1024 {
+                        64
+                    } else {
+                        16
+                    }
                 } else {
-                    16
+                    0
+                },
+                if boss_count < 32 { 4 } else { 0 },
+            ];
+            let allweights = weights.iter().fold(0, |sum, x| sum + x);
+            let accum = {
+                let mut accum = [0; 4];
+                let mut accumulator = 0;
+                for (i, e) in weights.iter().enumerate() {
+                    accumulator += e;
+                    accum[i] = accumulator;
                 }
-            } else {
-                0
+                accum
             };
+
             if 0 < allweights {
                 let dice = rng.gen_range(0, allweights);
                 let (pos, velo) = match rng.gen_range(0, 3) {
@@ -309,9 +333,12 @@ impl ShooterState {
                     }
                     _ => panic!("RNG returned out of range"),
                 };
-                self.enemies.push(Enemy::Enemy1(
-                    EnemyBase::new(&mut self.id_gen, pos, velo).health(3),
-                ));
+                if let Some(x) = accum.iter().position(|x| dice < *x) {
+                    self.enemies.push(match x {
+                        0 => Enemy::Enemy1(EnemyBase::new(&mut self.id_gen, pos, velo).health(3)),
+                        _ => Enemy::Boss(EnemyBase::new(&mut self.id_gen, pos, velo).health(64)),
+                    });
+                }
             }
             i += rng.gen_range(0, dice);
         }

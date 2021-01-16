@@ -170,7 +170,7 @@ impl ShooterState {
             void main() {
                 gl_Position = transform * vec4(vertexData.xy, 0.0, 1.0);
 
-                texCoords = vertexData.xy + 0.5;
+                texCoords = (vertexData.xy - 1.) * 0.5;
             }
         "#,
         )?;
@@ -212,7 +212,7 @@ impl ShooterState {
         self.vertex_position = context.get_attrib_location(&program, "vertexData") as u32;
         console_log!("vertex_position: {}", self.vertex_position);
 
-        let rect_vertices: [f32; 8] = [0.5, 0.5, -0.5, 0.5, -0.5, -0.5, 0.5, -0.5];
+        let rect_vertices: [f32; 8] = [1., 1., -1., 1., -1., -1., 1., -1.];
 
         let vertex_buffer_data = |vertices: &[f32]| -> Result<WebGlBuffer, JsValue> {
             let buffer = context.create_buffer().ok_or("failed to create buffer")?;

@@ -3,9 +3,7 @@ use core::f64;
 use crate::consts::*;
 use crate::ShooterState;
 use cgmath::{Matrix4, Rad, Vector3};
-use web_sys::{
-    WebGlRenderingContext as GL, WebGlTexture,
-};
+use web_sys::{WebGlRenderingContext as GL, WebGlTexture};
 
 /// The base structure of all Entities.  Implements common methods.
 pub struct Entity {
@@ -85,7 +83,8 @@ impl Entity {
         let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], 0.));
         let scale_mat = Matrix4::from_scale(scale.unwrap_or(1.));
         let rotation = Matrix4::from_angle_z(Rad(self.rotation as f64));
-        let transform = state.world_transform * &translation * &scale_mat * &rotation;
+        let flip = Matrix4::from_nonuniform_scale(1., -1., 1.);
+        let transform = state.world_transform * &translation * &scale_mat * &rotation * &flip;
         context.uniform_matrix4fv_with_f32_array(
             state.transform_loc.as_ref(),
             false,

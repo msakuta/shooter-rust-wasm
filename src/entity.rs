@@ -140,6 +140,7 @@ pub struct Assets {
     pub texture: Rc<WebGlTexture>,
     pub player_texture: Rc<WebGlTexture>,
     pub bullet_texture: Rc<WebGlTexture>,
+    pub enemy_bullet_texture: Rc<WebGlTexture>,
     pub rect_buffer: Option<WebGlBuffer>,
     pub vertex_position: u32,
     pub texture_loc: Option<WebGlUniformLocation>,
@@ -195,7 +196,17 @@ impl Enemy {
         ]
     }
 
-    pub fn animate(&mut self, state: &ShooterState) -> Option<DeathReason> {
+    pub fn animate(&mut self, state: &mut ShooterState) -> Option<DeathReason> {
+        let x: u32 = state.rng.gen_range(0, 64);
+        if x == 0 {
+            let eb = Projectile::EnemyBullet(BulletBase(Entity::new(
+                &mut state.id_gen,
+                self.get_base().pos,
+                [state.rng.next() - 0.5, state.rng.next() - 0.5],
+            )));
+            state.bullets.insert(eb.get_id(), eb);
+        }
+
         match self {
             Enemy::Enemy1(ref mut base) => base.0.animate(),
         }
@@ -206,13 +217,18 @@ pub struct BulletBase(pub Entity);
 
 pub enum Projectile {
     Bullet(BulletBase),
+    EnemyBullet(BulletBase),
 }
 
 impl Projectile {
     pub fn get_base<'b>(&'b self) -> &'b BulletBase {
         match &self {
-            &Projectile::Bullet(base) => base,
+            &Projectile::Bullet(base) | &Projectile::EnemyBullet(base) => base,
         }
+    }
+
+    pub fn get_id(&self) -> u32 {
+        self.get_base().0.id
     }
 
     fn animate_player_bullet(
@@ -232,6 +248,19 @@ impl Projectile {
         ent.animate()
     }
 
+    fn animate_enemy_bullet(
+        base: &mut BulletBase,
+        _enemies: &mut Vec<Enemy>,
+        player: &mut Player,
+    ) -> Option<DeathReason> {
+        let BulletBase(ref mut ent) = base;
+        if let Some(death_reason) = ent.hits_player(&player.base) {
+            player.base.health -= ent.health;
+            return Some(death_reason);
+        }
+        ent.animate()
+    }
+
     pub fn animate_bullet(
         &mut self,
         enemies: &mut Vec<Enemy>,
@@ -239,6 +268,7 @@ impl Projectile {
     ) -> Option<DeathReason> {
         match self {
             Projectile::Bullet(base) => Self::animate_player_bullet(base, enemies, player),
+            Projectile::EnemyBullet(base) => Self::animate_enemy_bullet(base, enemies, player),
         }
     }
 
@@ -258,6 +288,7 @@ impl Projectile {
             c,
             match self {
                 Projectile::Bullet(_) => &assets.bullet_texture,
+                Projectile::EnemyBullet(_) => &assets.enemy_bullet_texture,
             },
             Some(BULLET_SIZE),
         );

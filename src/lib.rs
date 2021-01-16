@@ -1,11 +1,10 @@
-use cgmath::{Matrix4, Rad, Vector3};
+use cgmath::{Matrix4, Vector3};
 use std::collections::HashMap;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
     HtmlImageElement, WebGlBuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture,
-    WebGlUniformLocation,
 };
 
 macro_rules! console_log {
@@ -48,12 +47,6 @@ fn get_context() -> WebGlRenderingContext {
         .unwrap()
         .dyn_into::<WebGlRenderingContext>()
         .unwrap()
-}
-
-struct Bullet {
-    pub pos: [f64; 2],
-    pub velo: [f64; 2],
-    pub rotation: f32,
 }
 
 #[wasm_bindgen]
@@ -128,6 +121,7 @@ impl ShooterState {
                 texture: load_texture_local("enemy")?,
                 player_texture: load_texture_local("player")?,
                 bullet_texture: load_texture_local("bullet")?,
+                enemy_bullet_texture: load_texture_local("ebullet")?,
                 rect_buffer: None,
                 vertex_position: 0,
                 texture_loc: None,
@@ -326,9 +320,6 @@ impl ShooterState {
             }
         }
 
-        let scale = 0.1;
-        let size = 1. / scale;
-
         let player_pos = &mut self.player.base.pos;
         if self.left_pressed && 0. < player_pos[0] - PLAYER_SPEED {
             player_pos[0] -= PLAYER_SPEED;
@@ -378,12 +369,7 @@ impl ShooterState {
             .into_iter()
             .filter_map(|(id, mut bullet)| {
                 bullet.draw(self, &context, &self.assets);
-                if let Some(reason) = bullet.animate_bullet(&mut self.enemies, &mut self.player) {
-                    console_log!(
-                        "deathreason: {:?}, pos: {:?}",
-                        reason,
-                        bullet.get_base().0.pos
-                    );
+                if let Some(_reason) = bullet.animate_bullet(&mut self.enemies, &mut self.player) {
                     None
                 } else {
                     Some((id, bullet))
@@ -521,44 +507,44 @@ fn load_texture(gl: &WebGlRenderingContext, url: &str) -> Result<Rc<WebGlTexture
         console_log!("loaded image: {}", url_str);
         // web_sys::console::log_1(Date::new_0().to_locale_string("en-GB", &JsValue::undefined()));
 
-        let f = || -> Result<(), JsValue> {
-            let window = web_sys::window().unwrap();
-            let document = window.document().unwrap();
-            let canvas = document.get_element_by_id("canvas").unwrap();
-            let canvas: web_sys::HtmlCanvasElement =
-                canvas.dyn_into::<web_sys::HtmlCanvasElement>()?;
-            let context = canvas
-                .get_context("webgl")?
-                .unwrap()
-                .dyn_into::<WebGlRenderingContext>()?;
+        let gl = get_context();
 
-            context.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*texture_clone));
-            context.tex_image_2d_with_u32_and_u32_and_image(
+        gl.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*texture_clone));
+        gl.tex_image_2d_with_u32_and_u32_and_image(
+            WebGlRenderingContext::TEXTURE_2D,
+            level,
+            internal_format,
+            src_format,
+            src_type,
+            &image_clone,
+        )
+        .unwrap();
+
+        // WebGL1 has different requirements for power of 2 images
+        // vs non power of 2 images so check if the image is a
+        // power of 2 in both dimensions.
+        if is_power_of_2(image_clone.width()) && is_power_of_2(image_clone.height()) {
+            // Yes, it's a power of 2. Generate mips.
+            gl.generate_mipmap(WebGlRenderingContext::TEXTURE_2D);
+        } else {
+            // No, it's not a power of 2. Turn off mips and set
+            // wrapping to clamp to edge
+            gl.tex_parameteri(
                 WebGlRenderingContext::TEXTURE_2D,
-                level,
-                internal_format,
-                src_format,
-                src_type,
-                &image_clone,
-            )?;
-            Ok(())
-        };
-
-        f().ok();
-
-        //   // WebGL1 has different requirements for power of 2 images
-        //   // vs non power of 2 images so check if the image is a
-        //   // power of 2 in both dimensions.
-        //   if (is_power_of_2(image.width) && is_power_of_2(image.height)) {
-        //      // Yes, it's a power of 2. Generate mips.
-        //      gl.generateMipmap(gl.TEXTURE_2D);
-        //   } else {
-        //      // No, it's not a power of 2. Turn off mips and set
-        //      // wrapping to clamp to edge
-        //      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        //      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        //      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        //   }
+                WebGlRenderingContext::TEXTURE_WRAP_S,
+                WebGlRenderingContext::CLAMP_TO_EDGE as i32,
+            );
+            gl.tex_parameteri(
+                WebGlRenderingContext::TEXTURE_2D,
+                WebGlRenderingContext::TEXTURE_WRAP_T,
+                WebGlRenderingContext::CLAMP_TO_EDGE as i32,
+            );
+            gl.tex_parameteri(
+                WebGlRenderingContext::TEXTURE_2D,
+                WebGlRenderingContext::TEXTURE_MIN_FILTER,
+                WebGlRenderingContext::LINEAR as i32,
+            );
+        }
     }) as Box<dyn FnMut()>);
     image.set_onload(Some(callback.as_ref().unchecked_ref()));
     image.set_src(url);
@@ -568,6 +554,6 @@ fn load_texture(gl: &WebGlRenderingContext, url: &str) -> Result<Rc<WebGlTexture
     Ok(texture)
 }
 
-fn _is_power_of_2(value: usize) -> bool {
+fn is_power_of_2(value: u32) -> bool {
     (value & (value - 1)) == 0
 }

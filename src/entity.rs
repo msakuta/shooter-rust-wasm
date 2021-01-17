@@ -129,9 +129,9 @@ pub struct Player {
     pub score: u32,
     pub kills: u32,
     pub power: u32,
-    // pub lives: u32,
-    // /// invincibility time caused by death or bomb
-    // pub invtime: u32,
+    pub lives: u32,
+    /// invincibility time caused by death or bomb
+    pub invtime: u32,
     pub weapon: Weapon,
     pub cooldown: u32,
 }
@@ -143,6 +143,8 @@ impl Player {
             score: 0,
             kills: 0,
             power: 0,
+            lives: 3,
+            invtime: 0,
             weapon: Weapon::Bullet,
             cooldown: 0,
         }

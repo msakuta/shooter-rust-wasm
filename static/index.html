@@ -5,11 +5,41 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
+    <style>
+        #gameOver {
+            position: absolute;
+            margin: auto;
+            color: white;
+            font-size: 30px;
+            width: 480px;
+            height: 480px;
+            text-align: center;
+            padding: 70px 0;
+            z-index: 1;
+        }
+
+        .noselect {
+            -webkit-touch-callout: none; /* iOS Safari */
+            -webkit-user-select: none;   /* Chrome/Safari/Opera */
+            -khtml-user-select: none;    /* Konqueror */
+            -moz-user-select: none;      /* Firefox */
+            -ms-user-select: none;       /* IE/Edge */
+            user-select: none;           /* non-prefixed version, currently
+                                            not supported by any browser */
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
     <body>
         <h1>shooter-rust-wasm</h1>
         <div style="position: relative; height: 480px;">
+            <div id="gameOver" class="noselect hidden" width="480" height="480">
+                Game Over
+            </div>
             <canvas id="canvas" width="480" height="480" style="position: absolute"></canvas>
-            <div style="position: absolute; left: 500px; top: 0px;">
+            <div id="sidePanel" class="noselect" style="position: absolute; left: 500px; top: 0px;">
                 <div id="frame">Frame: 1</div>
                 <div id="score">Score: 0</div>
                 <div id="kills">Kills: 0</div>

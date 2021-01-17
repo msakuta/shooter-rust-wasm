@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
     HtmlImageElement, WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlShader,
-    WebGlTexture,
+    WebGlTexture, Element,
 };
 
 macro_rules! console_log {
@@ -60,7 +60,9 @@ fn get_context() -> GL {
 #[wasm_bindgen]
 pub struct ShooterState {
     time: usize,
+    disptime: usize,
     paused: bool,
+    game_over: bool,
     id_gen: u32,
     player: Player,
     enemies: Vec<Enemy>,
@@ -77,6 +79,8 @@ pub struct ShooterState {
     up_pressed: bool,
     down_pressed: bool,
 
+    player_live_icons: Vec<Element>,
+
     assets: Assets,
 }
 
@@ -84,6 +88,23 @@ pub struct ShooterState {
 impl ShooterState {
     #[wasm_bindgen(constructor)]
     pub fn new(image_assets: js_sys::Array) -> Result<ShooterState, JsValue> {
+        let side_panel = document().get_element_by_id("sidePanel").unwrap();
+        let player_live_icons = (0..3).map(|_| {
+            let lives_icon = document().create_element("img")?;
+            lives_icon.set_attribute("src", &js_sys::Array::from(
+                &image_assets.iter().find(|value| {
+                let array = js_sys::Array::from(value);
+                array.iter().next() == Some(JsValue::from_str("player"))
+            }).unwrap())
+            .to_vec()
+            .get(1)
+            .ok_or_else(|| JsValue::from_str("Couldn't find texture"))?
+            .as_string().unwrap())?;
+            side_panel.append_child(&lives_icon)?;
+            Ok(lives_icon)
+        })
+        .collect::<Result<Vec<Element>, JsValue>>()?;
+
         let context = get_context();
 
         let load_texture_local = |path| -> Result<Rc<WebGlTexture>, JsValue> {
@@ -119,7 +140,9 @@ impl ShooterState {
 
         Ok(Self {
             time: 0,
+            disptime: 0,
             paused: false,
+            game_over: false,
             id_gen,
             player,
             enemies: vec![],
@@ -134,6 +157,7 @@ impl ShooterState {
             right_pressed: false,
             up_pressed: false,
             down_pressed: false,
+            player_live_icons,
             assets: Assets {
                 world_transform: Matrix4::from_translation(Vector3::new(-1., 1., 0.))
                     * &Matrix4::from_nonuniform_scale(2. / FWIDTH, -2. / FHEIGHT, 1.),
@@ -343,10 +367,10 @@ impl ShooterState {
             return Ok(());
         }
 
-        // Set the body's text content to how many times this
-        // requestAnimationFrame callback has fired.
-        self.time += 1;
-        // console_log!("requestAnimationFrame has been called {} times.", i);
+        if !self.paused {
+            self.time += 1;
+        }
+        self.disptime += 1;
 
         // state must be passed as arguments since they are mutable
         // borrows and needs to be released for each iteration.
@@ -457,19 +481,6 @@ impl ShooterState {
             i += rng.gen_range(0, dice);
         }
 
-        if self.up_pressed {
-            self.player.move_up()
-        }
-        if self.down_pressed {
-            self.player.move_down()
-        }
-        if self.left_pressed {
-            self.player.move_left()
-        }
-        if self.right_pressed {
-            self.player.move_right()
-        }
-
         context.clear(GL::COLOR_BUFFER_BIT);
 
         context.uniform_matrix4fv_with_f32_array(
@@ -485,107 +496,122 @@ impl ShooterState {
         context.bind_texture(GL::TEXTURE_2D, Some(&self.assets.back_tex));
         context.draw_arrays(GL::TRIANGLE_FAN, 0, 4);
 
-        if self.shoot_pressed && self.player.cooldown == 0 {
-            let weapon = &self.player.weapon;
-            let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
-
-            if Weapon::Bullet == *weapon || Weapon::Missile == *weapon {
-                let level = self.player.power_level() as i32;
-                self.player.cooldown += shoot_period;
-                for i in -1 - level..2 + level {
-                    let speed = if let Weapon::Bullet = weapon {
-                        BULLET_SPEED
-                    } else {
-                        MISSILE_SPEED
-                    };
-                    let mut ent =
-                        Entity::new(&mut self.id_gen, self.player.base.pos, [i as f64, -speed])
-                            .rotation((i as f32).atan2(speed as f32));
-                    if let Weapon::Bullet = weapon {
-                        self.shots_bullet += 1;
-                        self.bullets
-                            .insert(ent.id, Projectile::Bullet(BulletBase(ent)));
-                    } else {
-                        self.shots_missile += 1;
-                        ent = ent.health(5);
-                        self.bullets.insert(
-                            ent.id,
-                            Projectile::Missile {
-                                base: BulletBase(ent),
-                                target: 0,
-                                trail: vec![],
-                            },
-                        );
-                    }
-                }
-            } else if Weapon::Light == *weapon {
-                let gl = &context;
-                let assets = &self.assets;
-                let player = &self.player;
-                let level = player.power_level() as i32;
-
-                gl.use_program(Some(&self.assets.trail_shader.as_ref().unwrap().program));
-                let shader = assets.trail_shader.as_ref().unwrap();
-
-                gl.uniform1i(shader.texture_loc.as_ref(), 0);
-                gl.bind_texture(GL::TEXTURE_2D, Some(&assets.beam_tex));
-
-                enable_buffer(gl, &assets.trail_buffer, 4, shader.vertex_position);
-
-                let left = player.base.pos[0] as f32 - level as f32 - 3.;
-                let right = player.base.pos[0] as f32 + level as f32 + 3.;
-                let vertices = [
-                    [left, player.base.pos[1] as f32, 0., 0.],
-                    [right, player.base.pos[1] as f32, 0., 1.],
-                    [left, 0., 1., 0.],
-                    [right, 0., 1., 1.],
-                ];
-
-                vertex_buffer_data(gl, &vertices.flat()).unwrap();
-
-                gl.uniform_matrix4fv_with_f32_array(
-                    shader.transform_loc.as_ref(),
-                    false,
-                    <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(
-                        &assets.world_transform.cast().unwrap(),
-                    ),
-                );
-
-                gl.uniform_matrix3fv_with_f32_array(
-                    shader.tex_transform_loc.as_ref(),
-                    false,
-                    <Matrix3<f32> as AsRef<[f32; 9]>>::as_ref(&Matrix3::from_scale(1.)),
-                );
-
-                gl.draw_arrays(GL::TRIANGLE_STRIP, 0, vertices.len() as i32);
-
-                enable_buffer(
-                    gl,
-                    &assets.rect_buffer,
-                    2,
-                    assets.sprite_shader.as_ref().unwrap().vertex_position,
-                );
-
-                let beam_rect = [
-                    player.base.pos[0] - LIGHT_WIDTH,
-                    0.,
-                    player.base.pos[0] + LIGHT_WIDTH,
-                    player.base.pos[1],
-                ];
-                let mut enemies = std::mem::take(&mut self.enemies);
-                for enemy in &mut enemies {
-                    if enemy.test_hit(beam_rect) {
-                        add_tent(true, &enemy.get_base().pos, self);
-                        enemy.damage(1 + level);
-                    }
-                }
-                self.enemies = enemies;
+        if !self.game_over && !self.paused {
+            if self.up_pressed {
+                self.player.move_up()
             }
-        }
-        if self.player.cooldown < 1 {
-            self.player.cooldown = 0;
-        } else {
-            self.player.cooldown -= 1;
+            if self.down_pressed {
+                self.player.move_down()
+            }
+            if self.left_pressed {
+                self.player.move_left()
+            }
+            if self.right_pressed {
+                self.player.move_right()
+            }
+
+            if self.shoot_pressed && self.player.cooldown == 0 {
+                let weapon = &self.player.weapon;
+                let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
+
+                if Weapon::Bullet == *weapon || Weapon::Missile == *weapon {
+                    let level = self.player.power_level() as i32;
+                    self.player.cooldown += shoot_period;
+                    for i in -1 - level..2 + level {
+                        let speed = if let Weapon::Bullet = weapon {
+                            BULLET_SPEED
+                        } else {
+                            MISSILE_SPEED
+                        };
+                        let mut ent =
+                            Entity::new(&mut self.id_gen, self.player.base.pos, [i as f64, -speed])
+                                .rotation((i as f32).atan2(speed as f32));
+                        if let Weapon::Bullet = weapon {
+                            self.shots_bullet += 1;
+                            self.bullets
+                                .insert(ent.id, Projectile::Bullet(BulletBase(ent)));
+                        } else {
+                            self.shots_missile += 1;
+                            ent = ent.health(5);
+                            self.bullets.insert(
+                                ent.id,
+                                Projectile::Missile {
+                                    base: BulletBase(ent),
+                                    target: 0,
+                                    trail: vec![],
+                                },
+                            );
+                        }
+                    }
+                } else if Weapon::Light == *weapon {
+                    let gl = &context;
+                    let assets = &self.assets;
+                    let player = &self.player;
+                    let level = player.power_level() as i32;
+
+                    gl.use_program(Some(&self.assets.trail_shader.as_ref().unwrap().program));
+                    let shader = assets.trail_shader.as_ref().unwrap();
+
+                    gl.uniform1i(shader.texture_loc.as_ref(), 0);
+                    gl.bind_texture(GL::TEXTURE_2D, Some(&assets.beam_tex));
+
+                    enable_buffer(gl, &assets.trail_buffer, 4, shader.vertex_position);
+
+                    let left = player.base.pos[0] as f32 - level as f32 - 3.;
+                    let right = player.base.pos[0] as f32 + level as f32 + 3.;
+                    let vertices = [
+                        [left, player.base.pos[1] as f32, 0., 0.],
+                        [right, player.base.pos[1] as f32, 0., 1.],
+                        [left, 0., 1., 0.],
+                        [right, 0., 1., 1.],
+                    ];
+
+                    vertex_buffer_data(gl, &vertices.flat()).unwrap();
+
+                    gl.uniform_matrix4fv_with_f32_array(
+                        shader.transform_loc.as_ref(),
+                        false,
+                        <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(
+                            &assets.world_transform.cast().unwrap(),
+                        ),
+                    );
+
+                    gl.uniform_matrix3fv_with_f32_array(
+                        shader.tex_transform_loc.as_ref(),
+                        false,
+                        <Matrix3<f32> as AsRef<[f32; 9]>>::as_ref(&Matrix3::from_scale(1.)),
+                    );
+
+                    gl.draw_arrays(GL::TRIANGLE_STRIP, 0, vertices.len() as i32);
+
+                    enable_buffer(
+                        gl,
+                        &assets.rect_buffer,
+                        2,
+                        assets.sprite_shader.as_ref().unwrap().vertex_position,
+                    );
+
+                    let beam_rect = [
+                        player.base.pos[0] - LIGHT_WIDTH,
+                        0.,
+                        player.base.pos[0] + LIGHT_WIDTH,
+                        player.base.pos[1],
+                    ];
+                    let mut enemies = std::mem::take(&mut self.enemies);
+                    for enemy in &mut enemies {
+                        if enemy.test_hit(beam_rect) {
+                            add_tent(true, &enemy.get_base().pos, self);
+                            enemy.damage(1 + level);
+                        }
+                    }
+                    self.enemies = enemies;
+                }
+            }
+            if self.player.cooldown < 1 {
+                self.player.cooldown = 0;
+            } else {
+                self.player.cooldown -= 1;
+            }
         }
 
         context.use_program(Some(&self.assets.sprite_shader.as_ref().unwrap().program));
@@ -677,6 +703,23 @@ impl ShooterState {
                         ),
                         _ => {}
                     }
+
+                    if let DeathReason::HitPlayer = reason {
+                        console_log!("player hit! itime: {} go: {}, lives: {}", self.player.invtime, self.game_over, self.player.lives);
+                        if self.player.invtime == 0 && !self.game_over && 0 < self.player.lives {
+                            self.player.lives -= 1;
+                            self.player_live_icons[self.player.lives as usize].set_class_name("hidden");
+                            if self.player.lives == 0 {
+                                self.game_over = true;
+                                let game_over_element = document().get_element_by_id("gameOver")?;
+                                game_over_element.set_class_name("noselect");
+                            }
+                            else{
+                                self.player.invtime = PLAYER_INVINCIBLE_TIME;
+                            }
+                        }
+                    }
+
                     None
                 } else {
                     Some((id, bullet))
@@ -700,14 +743,22 @@ impl ShooterState {
             //println!("Deleted tent {} / {}", *i, bullets.len());
         }
 
+        if 0 < self.player.invtime {
+            self.player.invtime -= 1;
+        }
+
         load_identity(self);
 
-        self.player.base.draw_tex(
-            &self.assets,
-            &context,
-            &self.assets.player_texture,
-            Some(PLAYER_SIZE),
-        );
+        if !self.game_over {
+            if self.player.invtime == 0 || self.disptime % 2 == 0 {
+                self.player.base.draw_tex(
+                    &self.assets,
+                    &context,
+                    &self.assets.player_texture,
+                    Some(PLAYER_SIZE),
+                );
+            }
+        }
 
         fn set_text(id: &str, text: &str) {
             let frame_element = document().get_element_by_id(id).unwrap();

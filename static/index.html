@@ -6,7 +6,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
     <style>
-        #gameOver {
+        #gameOver, #paused {
             position: absolute;
             margin: auto;
             color: white;
@@ -14,8 +14,15 @@
             width: 480px;
             height: 480px;
             text-align: center;
-            padding: 70px 0;
             z-index: 1;
+        }
+
+        #gameOver {
+            padding: 70px 0;
+        }
+
+        #paused {
+            padding: 120px 0;
         }
 
         .noselect {
@@ -37,6 +44,9 @@
         <div style="position: relative; height: 480px;">
             <div id="gameOver" class="noselect hidden" width="480" height="480">
                 Game Over
+            </div>
+            <div id="paused" class="noselect hidden" width="480" height="480">
+                Paused
             </div>
             <canvas id="canvas" width="480" height="480" style="position: absolute"></canvas>
             <div id="sidePanel" class="noselect" style="position: absolute; left: 500px; top: 0px;">

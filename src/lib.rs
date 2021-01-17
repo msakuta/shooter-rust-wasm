@@ -5,8 +5,8 @@ use std::{collections::HashMap, vec};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    HtmlImageElement, WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlShader,
-    WebGlTexture, Element,
+    Element, HtmlImageElement, WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlShader,
+    WebGlTexture,
 };
 
 macro_rules! console_log {
@@ -89,21 +89,30 @@ impl ShooterState {
     #[wasm_bindgen(constructor)]
     pub fn new(image_assets: js_sys::Array) -> Result<ShooterState, JsValue> {
         let side_panel = document().get_element_by_id("sidePanel").unwrap();
-        let player_live_icons = (0..3).map(|_| {
-            let lives_icon = document().create_element("img")?;
-            lives_icon.set_attribute("src", &js_sys::Array::from(
-                &image_assets.iter().find(|value| {
-                let array = js_sys::Array::from(value);
-                array.iter().next() == Some(JsValue::from_str("player"))
-            }).unwrap())
-            .to_vec()
-            .get(1)
-            .ok_or_else(|| JsValue::from_str("Couldn't find texture"))?
-            .as_string().unwrap())?;
-            side_panel.append_child(&lives_icon)?;
-            Ok(lives_icon)
-        })
-        .collect::<Result<Vec<Element>, JsValue>>()?;
+        let player_live_icons = (0..3)
+            .map(|_| {
+                let lives_icon = document().create_element("img")?;
+                lives_icon.set_attribute(
+                    "src",
+                    &js_sys::Array::from(
+                        &image_assets
+                            .iter()
+                            .find(|value| {
+                                let array = js_sys::Array::from(value);
+                                array.iter().next() == Some(JsValue::from_str("player"))
+                            })
+                            .unwrap(),
+                    )
+                    .to_vec()
+                    .get(1)
+                    .ok_or_else(|| JsValue::from_str("Couldn't find texture"))?
+                    .as_string()
+                    .unwrap(),
+                )?;
+                side_panel.append_child(&lives_icon)?;
+                Ok(lives_icon)
+            })
+            .collect::<Result<Vec<Element>, JsValue>>()?;
 
         let context = get_context();
 
@@ -188,7 +197,16 @@ impl ShooterState {
             32 => self.shoot_pressed = true,
             65 | 37 => self.left_pressed = true,
             68 | 39 => self.right_pressed = true,
-            80 => self.paused = !self.paused, // P
+            80 => {
+                // P
+                self.paused = !self.paused;
+                let paused_element = document().get_element_by_id("paused").unwrap();
+                paused_element.set_class_name(if self.paused {
+                    "noselect"
+                } else {
+                    "noselect hidden"
+                })
+            }
             87 | 38 => self.up_pressed = true,
             83 | 40 => self.down_pressed = true,
             88 | 90 => {
@@ -407,78 +425,84 @@ impl ShooterState {
             });
         };
 
-        let dice = 256;
-        let rng = &mut self.rng;
-        let mut i = rng.gen_range(0, dice);
-        let [enemy_count, boss_count] = self.enemies.iter().fold([0; 2], |mut c, e| match e {
-            Enemy::Enemy1(_) => {
-                c[0] += 1;
-                c
-            }
-            Enemy::Boss(_) => {
-                c[1] += 1;
-                c
-            }
-        });
-        let gen_amount = 4;
-        while i < gen_amount {
-            let weights = [
-                if enemy_count < 128 {
-                    if self.player.score < 1024 {
-                        64
+        if !self.paused {
+            let dice = 256;
+            let rng = &mut self.rng;
+            let mut i = rng.gen_range(0, dice);
+            let [enemy_count, boss_count] = self.enemies.iter().fold([0; 2], |mut c, e| match e {
+                Enemy::Enemy1(_) => {
+                    c[0] += 1;
+                    c
+                }
+                Enemy::Boss(_) => {
+                    c[1] += 1;
+                    c
+                }
+            });
+            let gen_amount = 4;
+            while i < gen_amount {
+                let weights = [
+                    if enemy_count < 128 {
+                        if self.player.score < 1024 {
+                            64
+                        } else {
+                            16
+                        }
                     } else {
-                        16
+                        0
+                    },
+                    if boss_count < 32 { 4 } else { 0 },
+                ];
+                let allweights = weights.iter().fold(0, |sum, x| sum + x);
+                let accum = {
+                    let mut accum = [0; 4];
+                    let mut accumulator = 0;
+                    for (i, e) in weights.iter().enumerate() {
+                        accumulator += e;
+                        accum[i] = accumulator;
                     }
-                } else {
-                    0
-                },
-                if boss_count < 32 { 4 } else { 0 },
-            ];
-            let allweights = weights.iter().fold(0, |sum, x| sum + x);
-            let accum = {
-                let mut accum = [0; 4];
-                let mut accumulator = 0;
-                for (i, e) in weights.iter().enumerate() {
-                    accumulator += e;
-                    accum[i] = accumulator;
-                }
-                accum
-            };
-
-            if 0 < allweights {
-                let dice = rng.gen_range(0, allweights);
-                let (pos, velo) = match rng.gen_range(0, 3) {
-                    0 => {
-                        // top
-                        (
-                            [rng.gen_rangef(0., WIDTH as f64), 0.],
-                            [rng.next() - 0.5, rng.next() * 0.5],
-                        )
-                    }
-                    1 => {
-                        // left
-                        (
-                            [0., rng.gen_rangef(0., WIDTH as f64)],
-                            [rng.next() * 0.5, rng.next() - 0.5],
-                        )
-                    }
-                    2 => {
-                        // right
-                        (
-                            [WIDTH as f64, rng.gen_rangef(0., WIDTH as f64)],
-                            [-rng.next() * 0.5, rng.next() - 0.5],
-                        )
-                    }
-                    _ => panic!("RNG returned out of range"),
+                    accum
                 };
-                if let Some(x) = accum.iter().position(|x| dice < *x) {
-                    self.enemies.push(match x {
-                        0 => Enemy::Enemy1(EnemyBase::new(&mut self.id_gen, pos, velo).health(3)),
-                        _ => Enemy::Boss(EnemyBase::new(&mut self.id_gen, pos, velo).health(64)),
-                    });
+
+                if 0 < allweights {
+                    let dice = rng.gen_range(0, allweights);
+                    let (pos, velo) = match rng.gen_range(0, 3) {
+                        0 => {
+                            // top
+                            (
+                                [rng.gen_rangef(0., WIDTH as f64), 0.],
+                                [rng.next() - 0.5, rng.next() * 0.5],
+                            )
+                        }
+                        1 => {
+                            // left
+                            (
+                                [0., rng.gen_rangef(0., WIDTH as f64)],
+                                [rng.next() * 0.5, rng.next() - 0.5],
+                            )
+                        }
+                        2 => {
+                            // right
+                            (
+                                [WIDTH as f64, rng.gen_rangef(0., WIDTH as f64)],
+                                [-rng.next() * 0.5, rng.next() - 0.5],
+                            )
+                        }
+                        _ => panic!("RNG returned out of range"),
+                    };
+                    if let Some(x) = accum.iter().position(|x| dice < *x) {
+                        self.enemies.push(match x {
+                            0 => {
+                                Enemy::Enemy1(EnemyBase::new(&mut self.id_gen, pos, velo).health(3))
+                            }
+                            _ => {
+                                Enemy::Boss(EnemyBase::new(&mut self.id_gen, pos, velo).health(64))
+                            }
+                        });
+                    }
                 }
+                i += rng.gen_range(0, dice);
             }
-            i += rng.gen_range(0, dice);
         }
 
         context.clear(GL::COLOR_BUFFER_BIT);
@@ -612,6 +636,10 @@ impl ShooterState {
             } else {
                 self.player.cooldown -= 1;
             }
+
+            if 0 < self.player.invtime {
+                self.player.invtime -= 1;
+            }
         }
 
         context.use_program(Some(&self.assets.sprite_shader.as_ref().unwrap().program));
@@ -666,66 +694,76 @@ impl ShooterState {
             enemy.draw(self, &context, &self.assets);
         }
 
-        self.enemies = std::mem::take(&mut self.enemies)
-            .into_iter()
-            .filter_map(|mut enemy| {
-                if let Some(death_reason) = enemy.animate(self) {
-                    if let DeathReason::Killed = death_reason {
-                        self.player.kills += 1;
-                        self.player.score += if enemy.is_boss() { 10 } else { 1 };
-                        if self.rng.gen_range(0, 100) < 20 {
-                            let ent = Entity::new(&mut self.id_gen, enemy.get_base().pos, [0., 1.]);
-                            self.items.push(enemy.drop_item(ent));
-                            console_log!("item dropped: {:?}", self.items.len());
-                        }
-                    }
-                    None
-                } else {
-                    Some(enemy)
-                }
-            })
-            .collect();
-
-        self.bullets = std::mem::take(&mut self.bullets)
-            .into_iter()
-            .filter_map(|(id, mut bullet)| {
-                bullet.draw(self, &context, &self.assets);
-                if let Some(reason) = bullet.animate_bullet(&mut self.enemies, &mut self.player) {
-                    match reason {
-                        DeathReason::Killed | DeathReason::HitPlayer => add_tent(
-                            if let Projectile::Missile { .. } = bullet {
-                                false
-                            } else {
-                                true
-                            },
-                            &bullet.get_base().0.pos,
-                            self,
-                        ),
-                        _ => {}
-                    }
-
-                    if let DeathReason::HitPlayer = reason {
-                        console_log!("player hit! itime: {} go: {}, lives: {}", self.player.invtime, self.game_over, self.player.lives);
-                        if self.player.invtime == 0 && !self.game_over && 0 < self.player.lives {
-                            self.player.lives -= 1;
-                            self.player_live_icons[self.player.lives as usize].set_class_name("hidden");
-                            if self.player.lives == 0 {
-                                self.game_over = true;
-                                let game_over_element = document().get_element_by_id("gameOver")?;
-                                game_over_element.set_class_name("noselect");
-                            }
-                            else{
-                                self.player.invtime = PLAYER_INVINCIBLE_TIME;
+        if !self.paused {
+            self.enemies = std::mem::take(&mut self.enemies)
+                .into_iter()
+                .filter_map(|mut enemy| {
+                    if let Some(death_reason) = enemy.animate(self) {
+                        if let DeathReason::Killed = death_reason {
+                            self.player.kills += 1;
+                            self.player.score += if enemy.is_boss() { 10 } else { 1 };
+                            if self.rng.gen_range(0, 100) < 20 {
+                                let ent =
+                                    Entity::new(&mut self.id_gen, enemy.get_base().pos, [0., 1.]);
+                                self.items.push(enemy.drop_item(ent));
+                                console_log!("item dropped: {:?}", self.items.len());
                             }
                         }
+                        None
+                    } else {
+                        Some(enemy)
                     }
+                })
+                .collect();
+        }
 
-                    None
-                } else {
-                    Some((id, bullet))
-                }
-            })
-            .collect::<HashMap<_, _>>();
+        for (_, bullet) in &self.bullets {
+            bullet.draw(self, &context, &self.assets);
+        }
+
+        if !self.paused {
+            self.bullets = std::mem::take(&mut self.bullets)
+                .into_iter()
+                .filter_map(|(id, mut bullet)| {
+                    if let Some(reason) = bullet.animate_bullet(&mut self.enemies, &mut self.player)
+                    {
+                        match reason {
+                            DeathReason::Killed | DeathReason::HitPlayer => add_tent(
+                                if let Projectile::Missile { .. } = bullet {
+                                    false
+                                } else {
+                                    true
+                                },
+                                &bullet.get_base().0.pos,
+                                self,
+                            ),
+                            _ => {}
+                        }
+
+                        if let DeathReason::HitPlayer = reason {
+                            if self.player.invtime == 0 && !self.game_over && 0 < self.player.lives
+                            {
+                                self.player.lives -= 1;
+                                self.player_live_icons[self.player.lives as usize]
+                                    .set_class_name("hidden");
+                                if self.player.lives == 0 {
+                                    self.game_over = true;
+                                    let game_over_element =
+                                        document().get_element_by_id("gameOver")?;
+                                    game_over_element.set_class_name("noselect");
+                                } else {
+                                    self.player.invtime = PLAYER_INVINCIBLE_TIME;
+                                }
+                            }
+                        }
+
+                        None
+                    } else {
+                        Some((id, bullet))
+                    }
+                })
+                .collect::<HashMap<_, _>>();
+        }
 
         let mut to_delete = vec![];
         for (i, e) in &mut ((&mut self.tent).iter_mut().enumerate()) {
@@ -741,10 +779,6 @@ impl ShooterState {
         for i in to_delete.iter().rev() {
             self.tent.remove(*i);
             //println!("Deleted tent {} / {}", *i, bullets.len());
-        }
-
-        if 0 < self.player.invtime {
-            self.player.invtime -= 1;
         }
 
         load_identity(self);

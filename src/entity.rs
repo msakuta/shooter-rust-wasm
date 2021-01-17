@@ -260,6 +260,7 @@ pub struct Assets {
     pub explode2_tex: Rc<WebGlTexture>,
     pub trail_tex: Rc<WebGlTexture>,
     pub beam_tex: Rc<WebGlTexture>,
+    pub back_tex: Rc<WebGlTexture>,
 
     pub sprite_shader: Option<ShaderBundle>,
     pub trail_shader: Option<ShaderBundle>,

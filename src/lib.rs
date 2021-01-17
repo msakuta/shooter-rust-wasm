@@ -145,6 +145,7 @@ impl ShooterState {
                 explode2_tex: load_texture_local("explode2")?,
                 trail_tex: load_texture_local("trail")?,
                 beam_tex: load_texture_local("beam")?,
+                back_tex: load_texture_local("back")?,
                 sprite_shader: None,
                 trail_shader: None,
                 rect_buffer: None,
@@ -465,6 +466,19 @@ impl ShooterState {
         }
 
         context.clear(GL::COLOR_BUFFER_BIT);
+
+        context.uniform_matrix4fv_with_f32_array(
+            self.assets
+                .sprite_shader
+                .as_ref()
+                .unwrap()
+                .transform_loc
+                .as_ref(),
+            false,
+            <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&Matrix4::from_scale(1.)),
+        );
+        context.bind_texture(GL::TEXTURE_2D, Some(&self.assets.back_tex));
+        context.draw_arrays(GL::TRIANGLE_FAN, 0, 4);
 
         if self.shoot_pressed && self.player.cooldown == 0 {
             let weapon = &self.player.weapon;

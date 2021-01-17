@@ -8,6 +8,7 @@ import explode from "../assets/explode.png";
 import explode2 from "../assets/explode2.png";
 import trail from "../assets/trail.png";
 import beam from "../assets/beam.png";
+import back from "../assets/back2.jpg";
 
 // Note that a dynamic `import` statement here is required due to
 // webpack/webpack#6615, but in theory `import { greet } from './pkg';`
@@ -28,6 +29,7 @@ rust
       ["explode2", explode2],
       ["trail", trail],
       ["beam", beam],
+      ["back", back],
     ];
     let state = new module.ShooterState(image_assets);
 

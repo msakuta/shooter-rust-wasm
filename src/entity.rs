@@ -1,6 +1,7 @@
 use core::f64;
 
 use crate::consts::*;
+use crate::vertex_buffer_data;
 use crate::ShooterState;
 use cgmath::{Matrix3, Matrix4, Rad, Vector2, Vector3};
 use std::rc::Rc;
@@ -218,9 +219,11 @@ pub struct Assets {
     pub missile_tex: Rc<WebGlTexture>,
     pub explode_tex: Rc<WebGlTexture>,
     pub explode2_tex: Rc<WebGlTexture>,
+    pub trail_tex: Rc<WebGlTexture>,
 
     pub sprite_shader: Option<WebGlProgram>,
     pub animated_sprite_shader: Option<WebGlProgram>,
+    pub trail_buffer: Option<WebGlBuffer>,
     pub rect_buffer: Option<WebGlBuffer>,
     pub vertex_position: u32,
     pub texture_loc: Option<WebGlUniformLocation>,
@@ -340,6 +343,7 @@ pub enum Projectile {
 
 const MISSILE_DETECTION_RANGE: f64 = 256.;
 const MISSILE_HOMING_SPEED: f64 = 0.25;
+const MISSILE_TRAIL_WIDTH: f64 = 3.;
 const MISSILE_TRAIL_LENGTH: usize = 20;
 const MISSILE_DAMAGE: i32 = 5;
 
@@ -476,10 +480,62 @@ impl Projectile {
         ]
     }
 
-    pub fn draw(&self, state: &ShooterState, c: &GL, assets: &Assets) {
+    pub fn draw(&self, state: &ShooterState, gl: &GL, assets: &Assets) {
+        if let Projectile::Missile { trail, .. } = self {
+            let mut iter = trail.iter().enumerate();
+            if let Some(mut prev) = iter.next() {
+                for e in iter {
+                    prev = e;
+                }
+            }
+
+            gl.bind_texture(GL::TEXTURE_2D, Some(&assets.trail_tex));
+
+            gl.bind_buffer(GL::ARRAY_BUFFER, assets.trail_buffer.as_ref());
+            gl.vertex_attrib_pointer_with_i32(assets.vertex_position, 2, GL::FLOAT, false, 0, 0);
+            gl.enable_vertex_attrib_array(assets.vertex_position);
+
+            let vertices = trail.iter().zip(trail.iter().skip(1)).enumerate().fold(
+                vec![],
+                |mut acc, (i, (prev_node, this_node))| {
+                    let delta = vec2_normalized(vec2_sub(*this_node, *prev_node));
+                    let perp = vec2_scale(
+                        [delta[1], -delta[0]],
+                        MISSILE_TRAIL_WIDTH * i as f64 / MISSILE_TRAIL_LENGTH as f64,
+                    );
+                    let top = vec2_add(*prev_node, perp);
+                    let bottom = vec2_sub(*prev_node, perp);
+                    acc.push(top[0] as f32);
+                    acc.push(top[1] as f32);
+                    acc.push(bottom[0] as f32);
+                    acc.push(bottom[1] as f32);
+                    acc
+                },
+            );
+
+            vertex_buffer_data(gl, &vertices).unwrap();
+
+            gl.uniform_matrix4fv_with_f32_array(
+                assets.transform_loc.as_ref(),
+                false,
+                <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&assets.world_transform.cast().unwrap()),
+            );
+
+            gl.uniform_matrix3fv_with_f32_array(
+                assets.tex_transform_loc.as_ref(),
+                false,
+                <Matrix3<f32> as AsRef<[f32; 9]>>::as_ref(&Matrix3::from_scale(1.)),
+            );
+
+            gl.draw_arrays(GL::TRIANGLE_STRIP, 0, (vertices.len() / 2) as i32);
+
+            gl.bind_buffer(GL::ARRAY_BUFFER, assets.rect_buffer.as_ref());
+            gl.vertex_attrib_pointer_with_i32(assets.vertex_position, 2, GL::FLOAT, false, 0, 0);
+            gl.enable_vertex_attrib_array(assets.vertex_position);
+        }
         self.get_base().0.draw_tex(
             assets,
-            c,
+            gl,
             match self {
                 Projectile::Bullet(_) => &assets.bullet_texture,
                 Projectile::EnemyBullet(_) => &assets.enemy_bullet_texture,
@@ -497,6 +553,7 @@ pub struct TempEntity {
     pub width: u32,
     pub playback_rate: u32,
     pub image_width: u32,
+    pub size: f64,
 }
 
 impl TempEntity {
@@ -515,7 +572,7 @@ impl TempEntity {
         context.bind_texture(GL::TEXTURE_2D, Some(&self.texture));
         let rotation = Matrix4::from_angle_z(Rad(self.base.rotation as f64));
         let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], 0.));
-        let scale = Matrix4::from_scale(EXPLODE_SIZE);
+        let scale = Matrix4::from_scale(self.size);
         let frame = self.max_frames - (self.base.health as u32 / self.playback_rate) as u32;
         // let image   = Image::new().rect([0f64, 0f64, self.width as f64, tex2.get_height() as f64])
         //     .src_rect([frame as f64 * self.width as f64, 0., self.width as f64, tex2.get_height() as f64]);

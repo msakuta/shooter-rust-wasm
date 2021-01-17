@@ -141,9 +141,11 @@ impl ShooterState {
                 missile_tex: load_texture_local("missile")?,
                 explode_tex: load_texture_local("explode")?,
                 explode2_tex: load_texture_local("explode2")?,
+                trail_tex: load_texture_local("trail")?,
                 sprite_shader: None,
                 animated_sprite_shader: None,
                 rect_buffer: None,
+                trail_buffer: None,
                 vertex_position: 0,
                 texture_loc: None,
                 transform_loc: None,
@@ -247,31 +249,15 @@ impl ShooterState {
 
         self.assets.sprite_shader = Some(program);
 
-        let vertex_buffer_data = |vertices: &[f32]| -> Result<WebGlBuffer, JsValue> {
-            let buffer = context.create_buffer().ok_or("failed to create buffer")?;
-            context.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&buffer));
+        self.assets.trail_buffer = Some(context.create_buffer().ok_or("failed to create buffer")?);
 
-            // Note that `Float32Array::view` is somewhat dangerous (hence the
-            // `unsafe`!). This is creating a raw view into our module's
-            // `WebAssembly.Memory` buffer, but if we allocate more pages for ourself
-            // (aka do a memory allocation in Rust) it'll cause the buffer to change,
-            // causing the `Float32Array` to be invalid.
-            //
-            // As a result, after `Float32Array::view` we have to be very careful not to
-            // do any memory allocations before it's dropped.
-            unsafe {
-                let vert_array = js_sys::Float32Array::view(vertices);
+        self.assets.rect_buffer = Some(context.create_buffer().ok_or("failed to create buffer")?);
+        context.bind_buffer(
+            WebGlRenderingContext::ARRAY_BUFFER,
+            self.assets.rect_buffer.as_ref(),
+        );
 
-                context.buffer_data_with_array_buffer_view(
-                    WebGlRenderingContext::ARRAY_BUFFER,
-                    &vert_array,
-                    WebGlRenderingContext::STATIC_DRAW,
-                );
-            }
-            Ok(buffer)
-        };
-
-        self.assets.rect_buffer = Some(vertex_buffer_data(&rect_vertices)?);
+        vertex_buffer_data(&context, &rect_vertices)?;
 
         context.clear_color(0.0, 0.0, 0.5, 1.0);
 
@@ -322,9 +308,12 @@ impl ShooterState {
                 width: if is_bullet { 16 } else { 32 },
                 playback_rate,
                 image_width: if is_bullet { 128 } else { 256 },
+                size: if is_bullet {
+                    EXPLODE_SIZE
+                } else {
+                    EXPLODE2_SIZE
+                },
             });
-
-            console_log!("tent: {}", state.tent.len());
         };
 
         let dice = 256;
@@ -459,7 +448,7 @@ impl ShooterState {
 
         context.bind_buffer(
             WebGlRenderingContext::ARRAY_BUFFER,
-            Some(self.assets.rect_buffer.as_ref().unwrap()),
+            self.assets.rect_buffer.as_ref(),
         );
         context.vertex_attrib_pointer_with_i32(
             self.assets.vertex_position,
@@ -557,7 +546,10 @@ impl ShooterState {
         set_text("frame", &format!("Frame {}", self.time));
         set_text("score", &format!("Score {}", self.player.score));
         set_text("kills", &format!("Kills {}", self.player.kills));
-        set_text("shots", &format!("Shots {}/{}", self.shots_bullet, self.shots_missile));
+        set_text(
+            "shots",
+            &format!("Shots {}/{}", self.shots_bullet, self.shots_missile),
+        );
         set_text("weapon", &format!("Weapon {:#?}", self.player.weapon));
 
         Ok(())
@@ -720,4 +712,25 @@ fn load_texture(gl: &WebGlRenderingContext, url: &str) -> Result<Rc<WebGlTexture
 
 fn is_power_of_2(value: u32) -> bool {
     (value & (value - 1)) == 0
+}
+
+fn vertex_buffer_data(context: &WebGlRenderingContext, vertices: &[f32]) -> Result<(), JsValue> {
+    // Note that `Float32Array::view` is somewhat dangerous (hence the
+    // `unsafe`!). This is creating a raw view into our module's
+    // `WebAssembly.Memory` buffer, but if we allocate more pages for ourself
+    // (aka do a memory allocation in Rust) it'll cause the buffer to change,
+    // causing the `Float32Array` to be invalid.
+    //
+    // As a result, after `Float32Array::view` we have to be very careful not to
+    // do any memory allocations before it's dropped.
+    unsafe {
+        let vert_array = js_sys::Float32Array::view(vertices);
+
+        context.buffer_data_with_array_buffer_view(
+            WebGlRenderingContext::ARRAY_BUFFER,
+            &vert_array,
+            WebGlRenderingContext::STATIC_DRAW,
+        );
+    };
+    Ok(())
 }

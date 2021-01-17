@@ -1,7 +1,7 @@
 use cgmath::{Matrix3, Matrix4, Vector3};
 use slice_of_array::SliceFlatExt;
-use std::collections::HashMap;
 use std::rc::Rc;
+use std::{collections::HashMap, vec};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
@@ -24,8 +24,8 @@ mod xor128;
 
 use crate::consts::*;
 use crate::entity::{
-    Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Player, Projectile, ShaderBundle,
-    TempEntity, Weapon,
+    Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Player, Projectile,
+    ShaderBundle, TempEntity, Weapon,
 };
 use crate::xor128::Xor128;
 
@@ -64,6 +64,7 @@ pub struct ShooterState {
     id_gen: u32,
     player: Player,
     enemies: Vec<Enemy>,
+    items: Vec<Item>,
     bullets: HashMap<u32, Projectile>,
     tent: Vec<TempEntity>,
     rng: Xor128,
@@ -122,6 +123,7 @@ impl ShooterState {
             id_gen,
             player,
             enemies: vec![],
+            items: vec![],
             bullets: HashMap::new(),
             tent: vec![],
             rng: Xor128::new(3232132),
@@ -146,6 +148,8 @@ impl ShooterState {
                 trail_tex: load_texture_local("trail")?,
                 beam_tex: load_texture_local("beam")?,
                 back_tex: load_texture_local("back")?,
+                power_tex: load_texture_local("power")?,
+                power2_tex: load_texture_local("power2")?,
                 sprite_shader: None,
                 trail_shader: None,
                 rect_buffer: None,
@@ -609,6 +613,29 @@ impl ShooterState {
 
         load_identity(self);
 
+        let mut to_delete: Vec<usize> = Vec::new();
+
+        for (i, e) in &mut ((&mut self.items).iter_mut().enumerate()) {
+            if !self.paused {
+                if let Some(_) = e.animate(&mut self.player) {
+                    to_delete.push(i);
+                    continue;
+                }
+            }
+            e.draw(&context, &self.assets);
+        }
+
+        for i in to_delete.iter().rev() {
+            let dead = self.items.remove(*i);
+            console_log!(
+                "Deleted Item id={}: {} / {}",
+                dead.get_base().id,
+                *i,
+                self.items.len()
+            );
+        }
+        to_delete.clear();
+
         for enemy in &self.enemies {
             enemy.draw(self, &context, &self.assets);
         }
@@ -620,6 +647,11 @@ impl ShooterState {
                     if let DeathReason::Killed = death_reason {
                         self.player.kills += 1;
                         self.player.score += if enemy.is_boss() { 10 } else { 1 };
+                        if self.rng.gen_range(0, 100) < 20 {
+                            let ent = Entity::new(&mut self.id_gen, enemy.get_base().pos, [0., 1.]);
+                            self.items.push(enemy.drop_item(ent));
+                            console_log!("item dropped: {:?}", self.items.len());
+                        }
                     }
                     None
                 } else {
@@ -682,14 +714,22 @@ impl ShooterState {
             frame_element.set_inner_html(text);
         }
 
-        set_text("frame", &format!("Frame {}", self.time));
-        set_text("score", &format!("Score {}", self.player.score));
-        set_text("kills", &format!("Kills {}", self.player.kills));
+        set_text("frame", &format!("Frame: {}", self.time));
+        set_text("score", &format!("Score: {}", self.player.score));
+        set_text("kills", &format!("Kills: {}", self.player.kills));
+        set_text(
+            "power",
+            &format!(
+                "Power: {} Level: {}",
+                self.player.power,
+                self.player.power_level()
+            ),
+        );
         set_text(
             "shots",
             &format!("Shots {}/{}", self.shots_bullet, self.shots_missile),
         );
-        set_text("weapon", &format!("Weapon {:#?}", self.player.weapon));
+        set_text("weapon", &format!("Weapon: {:#?}", self.player.weapon));
 
         Ok(())
     }

@@ -15,3 +15,5 @@ pub const MISSILE_SPEED: f64 = 3.;
 pub const LIGHT_WIDTH: f64 = 3.;
 pub const EXPLODE_SIZE: f64 = 8.;
 pub const EXPLODE2_SIZE: f64 = 16.;
+pub const ITEM_SIZE: f64 = 6.;
+pub const ITEM2_SIZE: f64 = 12.;

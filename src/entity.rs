@@ -261,6 +261,8 @@ pub struct Assets {
     pub trail_tex: Rc<WebGlTexture>,
     pub beam_tex: Rc<WebGlTexture>,
     pub back_tex: Rc<WebGlTexture>,
+    pub power_tex: Rc<WebGlTexture>,
+    pub power2_tex: Rc<WebGlTexture>,
 
     pub sprite_shader: Option<ShaderBundle>,
     pub trail_shader: Option<ShaderBundle>,
@@ -308,6 +310,13 @@ impl Enemy {
     pub fn total_health(&self) -> i32 {
         match self {
             _ => self.get_base().health,
+        }
+    }
+
+    pub fn drop_item(&self, ent: Entity) -> Item {
+        match self {
+            Enemy::Enemy1(_) => Item::PowerUp(ent),
+            _ => Item::PowerUp10(ent),
         }
     }
 
@@ -592,6 +601,47 @@ impl Projectile {
             },
             Some(BULLET_SIZE),
         );
+    }
+}
+
+pub enum Item {
+    PowerUp(Entity),
+    PowerUp10(Entity),
+}
+
+impl Item {
+    pub fn get_base(&self) -> &Entity {
+        match self {
+            Item::PowerUp(ent) | Item::PowerUp10(ent) => ent,
+        }
+    }
+
+    pub fn draw(&self, gl: &GL, assets: &Assets) {
+        match self {
+            Item::PowerUp(item) => item.draw_tex(&assets, gl, &assets.power_tex, Some(ITEM_SIZE)),
+            Item::PowerUp10(item) => {
+                item.draw_tex(&assets, gl, &assets.power2_tex, Some(ITEM2_SIZE))
+            }
+        }
+    }
+
+    pub fn power_value(&self) -> u32 {
+        match self {
+            Item::PowerUp(_) => 1,
+            Item::PowerUp10(_) => 10,
+        }
+    }
+
+    pub fn animate(&mut self, player: &mut Player) -> Option<DeathReason> {
+        match self {
+            Item::PowerUp(ent) | Item::PowerUp10(ent) => {
+                if let Some(_) = ent.hits_player(&player.base) {
+                    player.power += self.power_value();
+                    return Some(DeathReason::Killed);
+                }
+                ent.animate()
+            }
+        }
     }
 }
 

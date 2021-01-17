@@ -42,13 +42,14 @@
     <body>
         <h1>shooter-rust-wasm</h1>
         <div style="position: relative; height: 480px;">
-            <div id="gameOver" class="noselect hidden" width="480" height="480">
-                Game Over
+            <canvas id="canvas" width="480" height="480" style="position: absolute"></canvas>
+            <div id="gameOver" class="hidden" width="480" height="480">
+                <span class="noselect">Game Over</span>
+                <button id="restart">Restart</button>
             </div>
             <div id="paused" class="noselect hidden" width="480" height="480">
                 Paused
             </div>
-            <canvas id="canvas" width="480" height="480" style="position: absolute"></canvas>
             <div id="sidePanel" class="noselect" style="position: absolute; left: 500px; top: 0px;">
                 <div id="frame">Frame: 1</div>
                 <div id="score">Score: 0</div>

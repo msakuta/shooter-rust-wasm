@@ -11,7 +11,7 @@ Try it now in your browser! https://msakuta.github.io/shooter-rust-wasm/
 
 ## Controls
 
-* W, A, S, D - move
+* Arrow keys, W, A, S, D - move
 * Z, X - select weapon
 * Space - shoot weapon
 

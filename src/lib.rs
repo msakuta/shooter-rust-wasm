@@ -158,10 +158,11 @@ impl ShooterState {
         println!("key: {}", event.key_code());
         match event.key_code() {
             32 => self.shoot_pressed = true,
-            65 => self.left_pressed = true,
-            68 => self.right_pressed = true,
-            87 => self.up_pressed = true,
-            83 => self.down_pressed = true,
+            65 | 37 => self.left_pressed = true,
+            68 | 39 => self.right_pressed = true,
+            80 => self.paused = !self.paused, // P
+            87 | 38 => self.up_pressed = true,
+            83 | 40 => self.down_pressed = true,
             88 | 90 => {
                 // Z or X
                 use Weapon::*;
@@ -213,10 +214,10 @@ impl ShooterState {
         console_log!("key: {}", event.key_code());
         match event.key_code() {
             32 => self.shoot_pressed = false,
-            65 => self.left_pressed = false,
-            68 => self.right_pressed = false,
-            87 => self.up_pressed = false,
-            83 => self.down_pressed = false,
+            65 | 37 => self.left_pressed = false,
+            68 | 39 => self.right_pressed = false,
+            87 | 38 => self.up_pressed = false,
+            83 | 40 => self.down_pressed = false,
             _ => (),
         }
     }

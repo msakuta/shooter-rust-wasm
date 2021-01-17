@@ -179,8 +179,8 @@ impl Player {
         self.score = 0;
         self.kills = 0;
         self.power = 0;
-        // self.lives = PLAYER_LIVES;
-        // self.invtime = 0;
+        self.lives = PLAYER_LIVES;
+        self.invtime = 0;
     }
 
     pub fn power_level(&self) -> u32 {

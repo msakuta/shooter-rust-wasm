@@ -18,6 +18,26 @@ macro_rules! console_log {
     }
 }
 
+/// format-like macro that returns js_sys::String
+macro_rules! js_str {
+    ($fmt:expr, $($arg1:expr),*) => {
+        JsValue::from_str(&format!($fmt, $($arg1),+))
+    };
+    ($fmt:expr) => {
+        JsValue::from_str($fmt)
+    }
+}
+
+/// format-like macro that returns Err(js_sys::String)
+macro_rules! js_err {
+    ($fmt:expr, $($arg1:expr),*) => {
+        Err(JsValue::from_str(&format!($fmt, $($arg1),+)))
+    };
+    ($fmt:expr) => {
+        Err(JsValue::from_str($fmt))
+    }
+}
+
 mod consts;
 mod entity;
 mod xor128;
@@ -141,11 +161,12 @@ impl ShooterState {
         };
 
         let mut id_gen = 0;
-        let player = Player::new(Entity::new(
+        let mut player = Player::new(Entity::new(
             &mut id_gen,
             [FWIDTH / 2., FHEIGHT / 2.],
             [0., 0.],
         ));
+        player.reset();
 
         Ok(Self {
             time: 0,
@@ -266,6 +287,30 @@ impl ShooterState {
             83 | 40 => self.down_pressed = false,
             _ => (),
         }
+    }
+
+    pub fn restart(&mut self) -> Result<(), JsValue> {
+        self.items.clear();
+        self.enemies.clear();
+        self.bullets.clear();
+        self.tent.clear();
+        self.time = 0;
+        self.id_gen = 0;
+        self.player.reset();
+        self.shots_bullet = 0;
+        self.shots_missile = 0;
+        self.paused = false;
+        self.game_over = false;
+
+        for icon in &self.player_live_icons {
+            icon.set_class_name("");
+        }
+        let game_over_element = document()
+            .get_element_by_id("gameOver")
+            .ok_or_else(|| js_str!("Game over element was not found"))?;
+        game_over_element.set_class_name("hidden");
+
+        Ok(())
     }
 
     pub fn start(&mut self) -> Result<(), JsValue> {
@@ -750,7 +795,7 @@ impl ShooterState {
                                     self.game_over = true;
                                     let game_over_element =
                                         document().get_element_by_id("gameOver")?;
-                                    game_over_element.set_class_name("noselect");
+                                    game_over_element.set_class_name("");
                                 } else {
                                     self.player.invtime = PLAYER_INVINCIBLE_TIME;
                                 }

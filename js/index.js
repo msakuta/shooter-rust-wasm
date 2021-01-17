@@ -42,6 +42,9 @@ rust
     document.addEventListener("keydown", (event) => state.key_down(event));
     document.addEventListener("keyup", (event) => state.key_up(event));
 
+    const restartButton = document.getElementById("restart");
+    restartButton.addEventListener("click", () => state.restart());
+
     function render() {
       state.render();
       requestAnimationFrame(render);

@@ -2,9 +2,11 @@ use core::f64;
 
 use crate::consts::*;
 use crate::ShooterState;
-use cgmath::{Matrix4, Rad, Vector3};
+use cgmath::{Matrix3, Matrix4, Rad, Vector2, Vector3};
 use std::rc::Rc;
-use web_sys::{WebGlBuffer, WebGlRenderingContext as GL, WebGlTexture, WebGlUniformLocation};
+use web_sys::{
+    WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlTexture, WebGlUniformLocation,
+};
 
 /// The base structure of all Entities.  Implements common methods.
 pub struct Entity {
@@ -195,10 +197,16 @@ pub struct Assets {
     pub player_texture: Rc<WebGlTexture>,
     pub bullet_texture: Rc<WebGlTexture>,
     pub enemy_bullet_texture: Rc<WebGlTexture>,
+    pub explode_tex: Rc<WebGlTexture>,
+    pub explode2_tex: Rc<WebGlTexture>,
+
+    pub sprite_shader: Option<WebGlProgram>,
+    pub animated_sprite_shader: Option<WebGlProgram>,
     pub rect_buffer: Option<WebGlBuffer>,
     pub vertex_position: u32,
     pub texture_loc: Option<WebGlUniformLocation>,
     pub transform_loc: Option<WebGlUniformLocation>,
+    pub tex_transform_loc: Option<WebGlUniformLocation>,
 }
 
 impl Enemy {
@@ -357,5 +365,52 @@ impl Projectile {
             },
             Some(BULLET_SIZE),
         );
+    }
+}
+
+pub struct TempEntity {
+    pub base: Entity,
+    pub texture: Rc<WebGlTexture>,
+    pub max_frames: u32,
+    pub width: u32,
+    pub playback_rate: u32,
+}
+
+impl TempEntity {
+    #[allow(dead_code)]
+    pub fn max_frames(mut self, max_frames: u32) -> Self {
+        self.max_frames = max_frames;
+        self
+    }
+    pub fn animate_temp(&mut self) -> Option<DeathReason> {
+        self.base.health -= 1;
+        self.base.animate()
+    }
+
+    pub fn draw_temp(&self, context: &GL, assets: &Assets) {
+        let pos = &self.base.pos;
+        context.bind_texture(GL::TEXTURE_2D, Some(&self.texture));
+        let rotation = Matrix4::from_angle_z(Rad(self.base.rotation as f64));
+        let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], 0.));
+        let scale = Matrix4::from_scale(EXPLODE_SIZE);
+        let frame = self.max_frames - (self.base.health as u32 / self.playback_rate) as u32;
+        // let image   = Image::new().rect([0f64, 0f64, self.width as f64, tex2.get_height() as f64])
+        //     .src_rect([frame as f64 * self.width as f64, 0., self.width as f64, tex2.get_height() as f64]);
+        let transform = assets.world_transform * &translation * &rotation * &scale;
+        context.uniform_matrix4fv_with_f32_array(
+            assets.transform_loc.as_ref(),
+            false,
+            <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform.cast().unwrap()),
+        );
+
+        let tex_translate = Matrix3::from_translation(Vector2::new((frame) as f32, 0.));
+        let tex_scale = Matrix3::from_nonuniform_scale(1. / self.max_frames as f32, 1.);
+        context.uniform_matrix3fv_with_f32_array(
+            assets.tex_transform_loc.as_ref(),
+            false,
+            <Matrix3<f32> as AsRef<[f32; 9]>>::as_ref(&(tex_scale * tex_translate)),
+        );
+
+        context.draw_arrays(GL::TRIANGLE_FAN, 0, 4);
     }
 }

@@ -1,4 +1,4 @@
-use cgmath::{Matrix4, Vector3};
+use cgmath::{Matrix3, Matrix4, Vector3};
 use std::collections::HashMap;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
@@ -22,7 +22,7 @@ mod xor128;
 
 use crate::consts::*;
 use crate::entity::{
-    Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Player, Projectile,
+    Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Player, Projectile, TempEntity,
 };
 use crate::xor128::Xor128;
 
@@ -57,10 +57,12 @@ fn get_context() -> WebGlRenderingContext {
 #[wasm_bindgen]
 pub struct ShooterState {
     time: usize,
+    paused: bool,
     id_gen: u32,
     player: Player,
     enemies: Vec<Enemy>,
     bullets: HashMap<u32, Projectile>,
+    tent: Vec<TempEntity>,
     rng: Xor128,
     shots_bullet: usize,
 
@@ -112,10 +114,12 @@ impl ShooterState {
 
         Ok(Self {
             time: 0,
+            paused: false,
             id_gen,
             player,
             enemies: vec![],
             bullets: HashMap::new(),
+            tent: vec![],
             rng: Xor128::new(3232132),
             shots_bullet: 0,
             shoot_pressed: false,
@@ -131,10 +135,15 @@ impl ShooterState {
                 player_texture: load_texture_local("player")?,
                 bullet_texture: load_texture_local("bullet")?,
                 enemy_bullet_texture: load_texture_local("ebullet")?,
+                explode_tex: load_texture_local("explode")?,
+                explode2_tex: load_texture_local("explode2")?,
+                sprite_shader: None,
+                animated_sprite_shader: None,
                 rect_buffer: None,
                 vertex_position: 0,
                 texture_loc: None,
                 transform_loc: None,
+                tex_transform_loc: None,
             },
         })
     }
@@ -172,11 +181,12 @@ impl ShooterState {
             r#"
             attribute vec2 vertexData;
             uniform mat4 transform;
+            uniform mat3 texTransform;
             varying vec2 texCoords;
             void main() {
                 gl_Position = transform * vec4(vertexData.xy, 0.0, 1.0);
 
-                texCoords = (vertexData.xy - 1.) * 0.5;
+                texCoords = (texTransform * vec3((vertexData.xy - 1.) * 0.5, 1.)).xy;
             }
         "#,
         )?;
@@ -201,6 +211,7 @@ impl ShooterState {
 
         self.assets.texture_loc = context.get_uniform_location(&program, "texture");
         self.assets.transform_loc = context.get_uniform_location(&program, "transform");
+        self.assets.tex_transform_loc = context.get_uniform_location(&program, "texTransform");
         console_log!(
             "assets.transform_loc: {}",
             self.assets.transform_loc.is_some()
@@ -222,6 +233,8 @@ impl ShooterState {
         console_log!("vertex_position: {}", self.assets.vertex_position);
 
         let rect_vertices: [f32; 8] = [1., 1., -1., 1., -1., -1., 1., -1.];
+
+        self.assets.sprite_shader = Some(program);
 
         let vertex_buffer_data = |vertices: &[f32]| -> Result<WebGlBuffer, JsValue> {
             let buffer = context.create_buffer().ok_or("failed to create buffer")?;
@@ -270,6 +283,37 @@ impl ShooterState {
         // requestAnimationFrame callback has fired.
         self.time += 1;
         // console_log!("requestAnimationFrame has been called {} times.", i);
+
+        // state must be passed as arguments since they are mutable
+        // borrows and needs to be released for each iteration.
+        // These variables are used in between multiple invocation of this closure.
+        let add_tent = |is_bullet, pos: &[f64; 2], state: &mut ShooterState| {
+            let mut ent = Entity::new(
+                &mut state.id_gen,
+                [
+                    pos[0] + 4. * (state.rng.next() - 0.5),
+                    pos[1] + 4. * (state.rng.next() - 0.5),
+                ],
+                [0., 0.],
+            )
+            .rotation(state.rng.next() as f32 * 2. * std::f32::consts::PI);
+            let (playback_rate, max_frames) = if is_bullet { (2, 8) } else { (4, 6) };
+            ent = ent.health((max_frames * playback_rate) as i32);
+
+            state.tent.push(TempEntity {
+                base: ent,
+                texture: if is_bullet {
+                    state.assets.explode_tex.clone()
+                } else {
+                    state.assets.explode2_tex.clone()
+                },
+                max_frames,
+                width: if is_bullet { 16 } else { 32 },
+                playback_rate,
+            });
+
+            console_log!("tent: {}", state.tent.len());
+        };
 
         let dice = 256;
         let rng = &mut self.rng;
@@ -397,6 +441,16 @@ impl ShooterState {
         );
         context.enable_vertex_attrib_array(self.assets.vertex_position);
 
+        let load_identity = |state: &Self| {
+            context.uniform_matrix3fv_with_f32_array(
+                state.assets.tex_transform_loc.as_ref(),
+                false,
+                <Matrix3<f32> as AsRef<[f32; 9]>>::as_ref(&Matrix3::from_scale(1.)),
+            );
+        };
+
+        load_identity(self);
+
         for enemy in &self.enemies {
             enemy.draw(self, &context, &self.assets);
         }
@@ -420,25 +474,37 @@ impl ShooterState {
             .into_iter()
             .filter_map(|(id, mut bullet)| {
                 bullet.draw(self, &context, &self.assets);
-                if let Some(_reason) = bullet.animate_bullet(&mut self.enemies, &mut self.player) {
+                if let Some(reason) = bullet.animate_bullet(&mut self.enemies, &mut self.player) {
+                    match reason {
+                        DeathReason::Killed | DeathReason::HitPlayer => {
+                            add_tent(true, &bullet.get_base().0.pos, self)
+                        }
+                        _ => {}
+                    }
                     None
                 } else {
                     Some((id, bullet))
                 }
-
-                // bullet.pos[0] = bullet.pos[0] + bullet.velo[0];
-                // bullet.pos[1] = bullet.pos[1] + bullet.velo[1];
-                // if -size < bullet.pos[0]
-                //     && bullet.pos[0] < size
-                //     && -size < bullet.pos[1]
-                //     && bullet.pos[1] < size
-                // {
-                //     Some(bullet)
-                // } else {
-                //     None
-                // }
             })
             .collect::<HashMap<_, _>>();
+
+        let mut to_delete = vec![];
+        for (i, e) in &mut ((&mut self.tent).iter_mut().enumerate()) {
+            if !self.paused {
+                if let Some(_) = e.animate_temp() {
+                    to_delete.push(i);
+                    continue;
+                }
+            }
+            e.draw_temp(&context, &self.assets);
+        }
+
+        for i in to_delete.iter().rev() {
+            self.tent.remove(*i);
+            //println!("Deleted tent {} / {}", *i, bullets.len());
+        }
+
+        load_identity(self);
 
         self.player.base.draw_tex(
             &self.assets,

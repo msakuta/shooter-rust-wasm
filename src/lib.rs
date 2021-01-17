@@ -23,8 +23,8 @@ mod xor128;
 
 use crate::consts::*;
 use crate::entity::{
-    Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Player, Projectile, TempEntity,
-    Weapon,
+    Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Player, Projectile, ShaderBundle,
+    TempEntity, Weapon,
 };
 use crate::xor128::Xor128;
 
@@ -145,13 +145,9 @@ impl ShooterState {
                 trail_tex: load_texture_local("trail")?,
                 beam_tex: load_texture_local("beam")?,
                 sprite_shader: None,
-                animated_sprite_shader: None,
+                trail_shader: None,
                 rect_buffer: None,
                 trail_buffer: None,
-                vertex_position: 0,
-                texture_loc: None,
-                transform_loc: None,
-                tex_transform_loc: None,
             },
         })
     }
@@ -260,35 +256,67 @@ impl ShooterState {
         let program = link_program(&context, &vert_shader, &frag_shader)?;
         context.use_program(Some(&program));
 
-        self.assets.texture_loc = context.get_uniform_location(&program, "texture");
-        self.assets.transform_loc = context.get_uniform_location(&program, "transform");
-        self.assets.tex_transform_loc = context.get_uniform_location(&program, "texTransform");
-        console_log!(
-            "assets.transform_loc: {}",
-            self.assets.transform_loc.is_some()
-        );
+        let shader = ShaderBundle::new(&context, program);
 
-        // Tell WebGL we want to affect texture unit 0
         context.active_texture(GL::TEXTURE0);
 
-        context.uniform1i(self.assets.texture_loc.as_ref(), 0);
+        context.uniform1i(shader.texture_loc.as_ref(), 0);
 
         context.enable(GL::BLEND);
         context.blend_equation(GL::FUNC_ADD);
         context.blend_func(GL::SRC_ALPHA, GL::ONE_MINUS_SRC_ALPHA);
 
-        self.assets.vertex_position = context.get_attrib_location(&program, "vertexData") as u32;
-        console_log!("vertex_position: {}", self.assets.vertex_position);
+        self.assets.sprite_shader = Some(shader);
 
-        let rect_vertices: [f32; 8] = [1., 1., -1., 1., -1., -1., 1., -1.];
+        let vert_shader = compile_shader(
+            &context,
+            GL::VERTEX_SHADER,
+            r#"
+            attribute vec4 vertexData;
+            uniform mat4 transform;
+            uniform mat3 texTransform;
+            varying vec2 texCoords;
+            void main() {
+                gl_Position = transform * vec4(vertexData.xy, 0.0, 1.0);
 
-        self.assets.sprite_shader = Some(program);
+                texCoords = (texTransform * vec3(vertexData.zw, 1.)).xy;
+            }
+        "#,
+        )?;
+        let frag_shader = compile_shader(
+            &context,
+            GL::FRAGMENT_SHADER,
+            r#"
+            precision mediump float;
+
+            varying vec2 texCoords;
+
+            uniform sampler2D texture;
+
+            void main() {
+                vec4 texColor = texture2D( texture, vec2(texCoords.x, texCoords.y) );
+                gl_FragColor = texColor;
+            }
+        "#,
+        )?;
+        let program = link_program(&context, &vert_shader, &frag_shader)?;
+        context.use_program(Some(&program));
+        self.assets.trail_shader = Some(ShaderBundle::new(&context, program));
+
+        context.active_texture(GL::TEXTURE0);
+        context.uniform1i(
+            self.assets
+                .trail_shader
+                .as_ref()
+                .and_then(|s| s.texture_loc.as_ref()),
+            0,
+        );
 
         self.assets.trail_buffer = Some(context.create_buffer().ok_or("failed to create buffer")?);
 
         self.assets.rect_buffer = Some(context.create_buffer().ok_or("failed to create buffer")?);
         context.bind_buffer(GL::ARRAY_BUFFER, self.assets.rect_buffer.as_ref());
-
+        let rect_vertices: [f32; 8] = [1., 1., -1., 1., -1., -1., 1., -1.];
         vertex_buffer_data(&context, &rect_vertices)?;
 
         context.clear_color(0.0, 0.0, 0.5, 1.0);
@@ -476,26 +504,28 @@ impl ShooterState {
                 let player = &self.player;
                 let level = player.power_level() as i32;
 
+                gl.use_program(Some(&self.assets.trail_shader.as_ref().unwrap().program));
+                let shader = assets.trail_shader.as_ref().unwrap();
+
+                gl.uniform1i(shader.texture_loc.as_ref(), 0);
                 gl.bind_texture(GL::TEXTURE_2D, Some(&assets.beam_tex));
-                enable_buffer(gl, &assets.trail_buffer, 2, assets.vertex_position);
+
+                enable_buffer(gl, &assets.trail_buffer, 4, shader.vertex_position);
 
                 let left = player.base.pos[0] as f32 - level as f32 - 3.;
                 let right = player.base.pos[0] as f32 + level as f32 + 3.;
+                #[rustfmt::skip]
                 let vertices = [
-                    left,
-                    player.base.pos[1] as f32,
-                    right,
-                    player.base.pos[1] as f32,
-                    left,
-                    0.,
-                    right,
-                    0.,
+                    left, player.base.pos[1] as f32,  0., 0.,
+                    right, player.base.pos[1] as f32, 0., 1.,
+                    left, 0.,                         1., 0.,
+                    right, 0.,                        1., 1.,
                 ];
 
                 vertex_buffer_data(gl, &vertices).unwrap();
 
                 gl.uniform_matrix4fv_with_f32_array(
-                    assets.transform_loc.as_ref(),
+                    shader.transform_loc.as_ref(),
                     false,
                     <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(
                         &assets.world_transform.cast().unwrap(),
@@ -503,14 +533,19 @@ impl ShooterState {
                 );
 
                 gl.uniform_matrix3fv_with_f32_array(
-                    assets.tex_transform_loc.as_ref(),
+                    shader.tex_transform_loc.as_ref(),
                     false,
                     <Matrix3<f32> as AsRef<[f32; 9]>>::as_ref(&Matrix3::from_scale(1.)),
                 );
 
-                gl.draw_arrays(GL::TRIANGLE_STRIP, 0, (vertices.len() / 2) as i32);
+                gl.draw_arrays(GL::TRIANGLE_STRIP, 0, (vertices.len() / 4) as i32);
 
-                enable_buffer(gl, &assets.rect_buffer, 2, assets.vertex_position);
+                enable_buffer(
+                    gl,
+                    &assets.rect_buffer,
+                    2,
+                    assets.sprite_shader.as_ref().unwrap().vertex_position,
+                );
 
                 let beam_rect = [
                     player.base.pos[0] - LIGHT_WIDTH,
@@ -534,11 +569,24 @@ impl ShooterState {
             self.player.cooldown -= 1;
         }
 
-        enable_buffer(&context, &self.assets.rect_buffer, 2, self.assets.vertex_position);
+        context.use_program(Some(&self.assets.sprite_shader.as_ref().unwrap().program));
+
+        enable_buffer(
+            &context,
+            &self.assets.rect_buffer,
+            2,
+            self.assets.sprite_shader.as_ref().unwrap().vertex_position,
+        );
 
         let load_identity = |state: &Self| {
             context.uniform_matrix3fv_with_f32_array(
-                state.assets.tex_transform_loc.as_ref(),
+                state
+                    .assets
+                    .sprite_shader
+                    .as_ref()
+                    .unwrap()
+                    .tex_transform_loc
+                    .as_ref(),
                 false,
                 <Matrix3<f32> as AsRef<[f32; 9]>>::as_ref(&Matrix3::from_scale(1.)),
             );

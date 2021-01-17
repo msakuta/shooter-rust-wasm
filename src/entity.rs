@@ -79,6 +79,7 @@ impl Entity {
         texture: &WebGlTexture,
         scale: Option<f64>,
     ) {
+        let shader = assets.sprite_shader.as_ref().unwrap();
         context.bind_texture(GL::TEXTURE_2D, Some(&texture));
         let pos = &self.pos;
         let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], 0.));
@@ -86,7 +87,7 @@ impl Entity {
         let rotation = Matrix4::from_angle_z(Rad(self.rotation as f64));
         let transform = assets.world_transform * &translation * &scale_mat * &rotation;
         context.uniform_matrix4fv_with_f32_array(
-            assets.transform_loc.as_ref(),
+            shader.transform_loc.as_ref(),
             false,
             <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform.cast().unwrap()),
         );
@@ -207,6 +208,45 @@ pub enum Enemy {
     Boss(EnemyBase),
 }
 
+pub struct ShaderBundle {
+    pub program: WebGlProgram,
+    pub vertex_position: u32,
+    pub tex_coord_position: u32,
+    pub texture_loc: Option<WebGlUniformLocation>,
+    pub transform_loc: Option<WebGlUniformLocation>,
+    pub tex_transform_loc: Option<WebGlUniformLocation>,
+}
+
+impl ShaderBundle {
+    pub fn new(gl: &GL, program: WebGlProgram) -> Self {
+        let vertex_position = gl.get_attrib_location(&program, "vertexData") as u32;
+        let tex_coord_position = gl.get_attrib_location(&program, "vertexData") as u32;
+        let texture_loc = gl.get_uniform_location(&program, "texture");
+        let transform_loc = gl.get_uniform_location(&program, "transform");
+        let tex_transform_loc = gl.get_uniform_location(&program, "texTransform");
+        let check_none = |op: &Option<WebGlUniformLocation>| {
+            if op.is_none() {
+                console_log!("Warning: location undefined");
+            } else {
+                console_log!("location defined");
+            }
+        };
+        console_log!("vertex_position: {}", vertex_position);
+        console_log!("tex_coord_position: {}", tex_coord_position);
+        check_none(&texture_loc);
+        check_none(&transform_loc);
+        check_none(&tex_transform_loc);
+        Self {
+            program,
+            vertex_position,
+            tex_coord_position,
+            texture_loc,
+            transform_loc,
+            tex_transform_loc,
+        }
+    }
+}
+
 pub struct Assets {
     pub world_transform: Matrix4<f64>,
 
@@ -221,14 +261,10 @@ pub struct Assets {
     pub trail_tex: Rc<WebGlTexture>,
     pub beam_tex: Rc<WebGlTexture>,
 
-    pub sprite_shader: Option<WebGlProgram>,
-    pub animated_sprite_shader: Option<WebGlProgram>,
+    pub sprite_shader: Option<ShaderBundle>,
+    pub trail_shader: Option<ShaderBundle>,
     pub trail_buffer: Option<WebGlBuffer>,
     pub rect_buffer: Option<WebGlBuffer>,
-    pub vertex_position: u32,
-    pub texture_loc: Option<WebGlUniformLocation>,
-    pub transform_loc: Option<WebGlUniformLocation>,
-    pub tex_transform_loc: Option<WebGlUniformLocation>,
 }
 
 impl Enemy {
@@ -343,7 +379,7 @@ pub enum Projectile {
 
 const MISSILE_DETECTION_RANGE: f64 = 256.;
 const MISSILE_HOMING_SPEED: f64 = 0.25;
-const MISSILE_TRAIL_WIDTH: f64 = 3.;
+const MISSILE_TRAIL_WIDTH: f64 = 5.;
 const MISSILE_TRAIL_LENGTH: usize = 20;
 const MISSILE_DAMAGE: i32 = 5;
 
@@ -489,9 +525,15 @@ impl Projectile {
                 }
             }
 
-            gl.bind_texture(GL::TEXTURE_2D, Some(&assets.trail_tex));
+            let shader = assets.trail_shader.as_ref().unwrap();
+            gl.use_program(Some(&shader.program));
 
-            enable_buffer(gl, &assets.trail_buffer, 2, assets.vertex_position);
+            gl.bind_texture(GL::TEXTURE_2D, Some(&assets.trail_tex));
+            gl.enable(GL::BLEND);
+            gl.blend_equation(GL::FUNC_ADD);
+            gl.blend_func(GL::SRC_ALPHA, GL::ONE_MINUS_SRC_ALPHA);
+
+            enable_buffer(gl, &assets.trail_buffer, 4, shader.vertex_position);
 
             let vertices = trail.iter().zip(trail.iter().skip(1)).enumerate().fold(
                 vec![],
@@ -503,10 +545,18 @@ impl Projectile {
                     );
                     let top = vec2_add(*prev_node, perp);
                     let bottom = vec2_sub(*prev_node, perp);
-                    acc.push(top[0] as f32);
-                    acc.push(top[1] as f32);
-                    acc.push(bottom[0] as f32);
-                    acc.push(bottom[1] as f32);
+                    acc.extend_from_slice(&[
+                        top[0] as f32,
+                        top[1] as f32,
+                        i as f32 / trail.len() as f32,
+                        -0.1,
+                    ]);
+                    acc.extend_from_slice(&[
+                        bottom[0] as f32,
+                        bottom[1] as f32,
+                        i as f32 / trail.len() as f32,
+                        1.1,
+                    ]);
                     acc
                 },
             );
@@ -514,20 +564,22 @@ impl Projectile {
             vertex_buffer_data(gl, &vertices).unwrap();
 
             gl.uniform_matrix4fv_with_f32_array(
-                assets.transform_loc.as_ref(),
+                shader.transform_loc.as_ref(),
                 false,
                 <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&assets.world_transform.cast().unwrap()),
             );
 
             gl.uniform_matrix3fv_with_f32_array(
-                assets.tex_transform_loc.as_ref(),
+                shader.tex_transform_loc.as_ref(),
                 false,
                 <Matrix3<f32> as AsRef<[f32; 9]>>::as_ref(&Matrix3::from_scale(1.)),
             );
 
-            gl.draw_arrays(GL::TRIANGLE_STRIP, 0, (vertices.len() / 2) as i32);
+            gl.draw_arrays(GL::TRIANGLE_STRIP, 0, (vertices.len() / 4) as i32);
 
-            enable_buffer(gl, &assets.rect_buffer, 2, assets.vertex_position);
+            // Switch back to sprite shader and buffer
+            gl.use_program(assets.sprite_shader.as_ref().and_then(|o| Some(&o.program)));
+            enable_buffer(gl, &assets.rect_buffer, 2, shader.vertex_position);
         }
         self.get_base().0.draw_tex(
             assets,
@@ -564,6 +616,7 @@ impl TempEntity {
     }
 
     pub fn draw_temp(&self, context: &GL, assets: &Assets) {
+        let shader = assets.sprite_shader.as_ref().unwrap();
         let pos = &self.base.pos;
         context.bind_texture(GL::TEXTURE_2D, Some(&self.texture));
         let rotation = Matrix4::from_angle_z(Rad(self.base.rotation as f64));
@@ -574,7 +627,7 @@ impl TempEntity {
         //     .src_rect([frame as f64 * self.width as f64, 0., self.width as f64, tex2.get_height() as f64]);
         let transform = assets.world_transform * &translation * &rotation * &scale;
         context.uniform_matrix4fv_with_f32_array(
-            assets.transform_loc.as_ref(),
+            shader.transform_loc.as_ref(),
             false,
             <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform.cast().unwrap()),
         );
@@ -583,7 +636,7 @@ impl TempEntity {
         let tex_scale =
             Matrix3::from_nonuniform_scale(self.width as f32 / self.image_width as f32, 1.);
         context.uniform_matrix3fv_with_f32_array(
-            assets.tex_transform_loc.as_ref(),
+            shader.tex_transform_loc.as_ref(),
             false,
             <Matrix3<f32> as AsRef<[f32; 9]>>::as_ref(&(tex_scale * tex_translate)),
         );

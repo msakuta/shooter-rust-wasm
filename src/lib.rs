@@ -1,4 +1,5 @@
 use cgmath::{Matrix3, Matrix4, Vector3};
+use slice_of_array::SliceFlatExt;
 use std::collections::HashMap;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
@@ -514,15 +515,14 @@ impl ShooterState {
 
                 let left = player.base.pos[0] as f32 - level as f32 - 3.;
                 let right = player.base.pos[0] as f32 + level as f32 + 3.;
-                #[rustfmt::skip]
                 let vertices = [
-                    left, player.base.pos[1] as f32,  0., 0.,
-                    right, player.base.pos[1] as f32, 0., 1.,
-                    left, 0.,                         1., 0.,
-                    right, 0.,                        1., 1.,
+                    [left, player.base.pos[1] as f32, 0., 0.],
+                    [right, player.base.pos[1] as f32, 0., 1.],
+                    [left, 0., 1., 0.],
+                    [right, 0., 1., 1.],
                 ];
 
-                vertex_buffer_data(gl, &vertices).unwrap();
+                vertex_buffer_data(gl, &vertices.flat()).unwrap();
 
                 gl.uniform_matrix4fv_with_f32_array(
                     shader.transform_loc.as_ref(),
@@ -538,7 +538,7 @@ impl ShooterState {
                     <Matrix3<f32> as AsRef<[f32; 9]>>::as_ref(&Matrix3::from_scale(1.)),
                 );
 
-                gl.draw_arrays(GL::TRIANGLE_STRIP, 0, (vertices.len() / 4) as i32);
+                gl.draw_arrays(GL::TRIANGLE_STRIP, 0, vertices.len() as i32);
 
                 enable_buffer(
                     gl,

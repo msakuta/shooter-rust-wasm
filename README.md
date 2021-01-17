@@ -2,6 +2,8 @@
 
 This is a port of [shooter-rust](https://github.com/msakuta/shooter-rust) to WebAssembly.
 
+Try it now in your browser! https://msakuta.github.io/shooter-rust-wasm/
+
 ## Screenshots
 
 ![image](screenshots/screenshot01.jpg)

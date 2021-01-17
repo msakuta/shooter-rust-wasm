@@ -1,8 +1,7 @@
 use core::f64;
 
 use crate::consts::*;
-use crate::vertex_buffer_data;
-use crate::ShooterState;
+use crate::{enable_buffer, vertex_buffer_data, ShooterState};
 use cgmath::{Matrix3, Matrix4, Rad, Vector2, Vector3};
 use std::rc::Rc;
 use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
@@ -220,6 +219,7 @@ pub struct Assets {
     pub explode_tex: Rc<WebGlTexture>,
     pub explode2_tex: Rc<WebGlTexture>,
     pub trail_tex: Rc<WebGlTexture>,
+    pub beam_tex: Rc<WebGlTexture>,
 
     pub sprite_shader: Option<WebGlProgram>,
     pub animated_sprite_shader: Option<WebGlProgram>,
@@ -491,9 +491,7 @@ impl Projectile {
 
             gl.bind_texture(GL::TEXTURE_2D, Some(&assets.trail_tex));
 
-            gl.bind_buffer(GL::ARRAY_BUFFER, assets.trail_buffer.as_ref());
-            gl.vertex_attrib_pointer_with_i32(assets.vertex_position, 2, GL::FLOAT, false, 0, 0);
-            gl.enable_vertex_attrib_array(assets.vertex_position);
+            enable_buffer(gl, &assets.trail_buffer, 2, assets.vertex_position);
 
             let vertices = trail.iter().zip(trail.iter().skip(1)).enumerate().fold(
                 vec![],
@@ -529,9 +527,7 @@ impl Projectile {
 
             gl.draw_arrays(GL::TRIANGLE_STRIP, 0, (vertices.len() / 2) as i32);
 
-            gl.bind_buffer(GL::ARRAY_BUFFER, assets.rect_buffer.as_ref());
-            gl.vertex_attrib_pointer_with_i32(assets.vertex_position, 2, GL::FLOAT, false, 0, 0);
-            gl.enable_vertex_attrib_array(assets.vertex_position);
+            enable_buffer(gl, &assets.rect_buffer, 2, assets.vertex_position);
         }
         self.get_base().0.draw_tex(
             assets,

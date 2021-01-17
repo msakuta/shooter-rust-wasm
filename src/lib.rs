@@ -4,7 +4,8 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    HtmlImageElement, WebGlBuffer, WebGlProgram, WebGlRenderingContext, WebGlShader, WebGlTexture,
+    HtmlImageElement, WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlShader,
+    WebGlTexture,
 };
 
 macro_rules! console_log {
@@ -41,7 +42,7 @@ fn document() -> web_sys::Document {
     window().document().unwrap()
 }
 
-fn get_context() -> WebGlRenderingContext {
+fn get_context() -> GL {
     let document = document();
     let canvas = document.get_element_by_id("canvas").unwrap();
     let canvas: web_sys::HtmlCanvasElement =
@@ -51,7 +52,7 @@ fn get_context() -> WebGlRenderingContext {
         .get_context("webgl")
         .unwrap()
         .unwrap()
-        .dyn_into::<WebGlRenderingContext>()
+        .dyn_into::<GL>()
         .unwrap()
 }
 
@@ -142,6 +143,7 @@ impl ShooterState {
                 explode_tex: load_texture_local("explode")?,
                 explode2_tex: load_texture_local("explode2")?,
                 trail_tex: load_texture_local("trail")?,
+                beam_tex: load_texture_local("beam")?,
                 sprite_shader: None,
                 animated_sprite_shader: None,
                 rect_buffer: None,
@@ -163,11 +165,47 @@ impl ShooterState {
             87 => self.up_pressed = true,
             83 => self.down_pressed = true,
             88 | 90 => {
-                self.player.weapon = if self.player.weapon == Weapon::Bullet {
-                    Weapon::Missile
-                } else {
-                    Weapon::Bullet
-                }
+                // Z or X
+                use Weapon::*;
+                let is_x = event.key_code() == 88;
+                let weapon_set = [
+                    ("Bullet", Bullet),
+                    ("Light", Light),
+                    ("Missile", Missile),
+                    ("Lightning", Lightning),
+                ];
+                let (name, next_weapon) = match self.player.weapon {
+                    Bullet => {
+                        if is_x {
+                            &weapon_set[1]
+                        } else {
+                            &weapon_set[3]
+                        }
+                    }
+                    Light => {
+                        if is_x {
+                            &weapon_set[2]
+                        } else {
+                            &weapon_set[0]
+                        }
+                    }
+                    Missile => {
+                        if is_x {
+                            &weapon_set[3]
+                        } else {
+                            &weapon_set[1]
+                        }
+                    }
+                    Lightning => {
+                        if is_x {
+                            &weapon_set[0]
+                        } else {
+                            &weapon_set[2]
+                        }
+                    }
+                };
+                self.player.weapon = next_weapon.clone();
+                println!("Weapon switched: {}", name);
             }
             _ => (),
         }
@@ -190,7 +228,7 @@ impl ShooterState {
 
         let vert_shader = compile_shader(
             &context,
-            WebGlRenderingContext::VERTEX_SHADER,
+            GL::VERTEX_SHADER,
             r#"
             attribute vec2 vertexData;
             uniform mat4 transform;
@@ -205,7 +243,7 @@ impl ShooterState {
         )?;
         let frag_shader = compile_shader(
             &context,
-            WebGlRenderingContext::FRAGMENT_SHADER,
+            GL::FRAGMENT_SHADER,
             r#"
             precision mediump float;
 
@@ -231,16 +269,13 @@ impl ShooterState {
         );
 
         // Tell WebGL we want to affect texture unit 0
-        context.active_texture(WebGlRenderingContext::TEXTURE0);
+        context.active_texture(GL::TEXTURE0);
 
         context.uniform1i(self.assets.texture_loc.as_ref(), 0);
 
-        context.enable(WebGlRenderingContext::BLEND);
-        context.blend_equation(WebGlRenderingContext::FUNC_ADD);
-        context.blend_func(
-            WebGlRenderingContext::SRC_ALPHA,
-            WebGlRenderingContext::ONE_MINUS_SRC_ALPHA,
-        );
+        context.enable(GL::BLEND);
+        context.blend_equation(GL::FUNC_ADD);
+        context.blend_func(GL::SRC_ALPHA, GL::ONE_MINUS_SRC_ALPHA);
 
         self.assets.vertex_position = context.get_attrib_location(&program, "vertexData") as u32;
         console_log!("vertex_position: {}", self.assets.vertex_position);
@@ -252,10 +287,7 @@ impl ShooterState {
         self.assets.trail_buffer = Some(context.create_buffer().ok_or("failed to create buffer")?);
 
         self.assets.rect_buffer = Some(context.create_buffer().ok_or("failed to create buffer")?);
-        context.bind_buffer(
-            WebGlRenderingContext::ARRAY_BUFFER,
-            self.assets.rect_buffer.as_ref(),
-        );
+        context.bind_buffer(GL::ARRAY_BUFFER, self.assets.rect_buffer.as_ref());
 
         vertex_buffer_data(&context, &rect_vertices)?;
 
@@ -403,11 +435,13 @@ impl ShooterState {
             self.player.move_right()
         }
 
+        context.clear(GL::COLOR_BUFFER_BIT);
+
         if self.shoot_pressed && self.player.cooldown == 0 {
             let weapon = &self.player.weapon;
             let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
 
-            if self.time % 5 == 0 {
+            if Weapon::Bullet == *weapon || Weapon::Missile == *weapon {
                 let level = self.player.power_level() as i32;
                 self.player.cooldown += shoot_period;
                 for i in -1 - level..2 + level {
@@ -436,6 +470,62 @@ impl ShooterState {
                         );
                     }
                 }
+            } else if Weapon::Light == *weapon {
+                let gl = &context;
+                let assets = &self.assets;
+                let player = &self.player;
+                let level = player.power_level() as i32;
+
+                gl.bind_texture(GL::TEXTURE_2D, Some(&assets.beam_tex));
+                enable_buffer(gl, &assets.trail_buffer, 2, assets.vertex_position);
+
+                let left = player.base.pos[0] as f32 - level as f32 - 3.;
+                let right = player.base.pos[0] as f32 + level as f32 + 3.;
+                let vertices = [
+                    left,
+                    player.base.pos[1] as f32,
+                    right,
+                    player.base.pos[1] as f32,
+                    left,
+                    0.,
+                    right,
+                    0.,
+                ];
+
+                vertex_buffer_data(gl, &vertices).unwrap();
+
+                gl.uniform_matrix4fv_with_f32_array(
+                    assets.transform_loc.as_ref(),
+                    false,
+                    <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(
+                        &assets.world_transform.cast().unwrap(),
+                    ),
+                );
+
+                gl.uniform_matrix3fv_with_f32_array(
+                    assets.tex_transform_loc.as_ref(),
+                    false,
+                    <Matrix3<f32> as AsRef<[f32; 9]>>::as_ref(&Matrix3::from_scale(1.)),
+                );
+
+                gl.draw_arrays(GL::TRIANGLE_STRIP, 0, (vertices.len() / 2) as i32);
+
+                enable_buffer(gl, &assets.rect_buffer, 2, assets.vertex_position);
+
+                let beam_rect = [
+                    player.base.pos[0] - LIGHT_WIDTH,
+                    0.,
+                    player.base.pos[0] + LIGHT_WIDTH,
+                    player.base.pos[1],
+                ];
+                let mut enemies = std::mem::take(&mut self.enemies);
+                for enemy in &mut enemies {
+                    if enemy.test_hit(beam_rect) {
+                        add_tent(true, &enemy.get_base().pos, self);
+                        enemy.damage(1 + level);
+                    }
+                }
+                self.enemies = enemies;
             }
         }
         if self.player.cooldown < 1 {
@@ -444,21 +534,7 @@ impl ShooterState {
             self.player.cooldown -= 1;
         }
 
-        context.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
-
-        context.bind_buffer(
-            WebGlRenderingContext::ARRAY_BUFFER,
-            self.assets.rect_buffer.as_ref(),
-        );
-        context.vertex_attrib_pointer_with_i32(
-            self.assets.vertex_position,
-            2,
-            WebGlRenderingContext::FLOAT,
-            false,
-            0,
-            0,
-        );
-        context.enable_vertex_attrib_array(self.assets.vertex_position);
+        enable_buffer(&context, &self.assets.rect_buffer, 2, self.assets.vertex_position);
 
         let load_identity = |state: &Self| {
             context.uniform_matrix3fv_with_f32_array(
@@ -556,11 +632,7 @@ impl ShooterState {
     }
 }
 
-pub fn compile_shader(
-    context: &WebGlRenderingContext,
-    shader_type: u32,
-    source: &str,
-) -> Result<WebGlShader, String> {
+pub fn compile_shader(context: &GL, shader_type: u32, source: &str) -> Result<WebGlShader, String> {
     let shader = context
         .create_shader(shader_type)
         .ok_or_else(|| String::from("Unable to create shader object"))?;
@@ -568,7 +640,7 @@ pub fn compile_shader(
     context.compile_shader(&shader);
 
     if context
-        .get_shader_parameter(&shader, WebGlRenderingContext::COMPILE_STATUS)
+        .get_shader_parameter(&shader, GL::COMPILE_STATUS)
         .as_bool()
         .unwrap_or(false)
     {
@@ -581,7 +653,7 @@ pub fn compile_shader(
 }
 
 pub fn link_program(
-    context: &WebGlRenderingContext,
+    context: &GL,
     vert_shader: &WebGlShader,
     frag_shader: &WebGlShader,
 ) -> Result<WebGlProgram, String> {
@@ -594,7 +666,7 @@ pub fn link_program(
     context.link_program(&program);
 
     if context
-        .get_program_parameter(&program, WebGlRenderingContext::LINK_STATUS)
+        .get_program_parameter(&program, GL::LINK_STATUS)
         .as_bool()
         .unwrap_or(false)
     {
@@ -610,9 +682,9 @@ pub fn link_program(
 // Initialize a texture and load an image.
 // When the image finished loading copy it into the texture.
 //
-fn load_texture(gl: &WebGlRenderingContext, url: &str) -> Result<Rc<WebGlTexture>, JsValue> {
+fn load_texture(gl: &GL, url: &str) -> Result<Rc<WebGlTexture>, JsValue> {
     let texture = Rc::new(gl.create_texture().unwrap());
-    gl.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*texture));
+    gl.bind_texture(GL::TEXTURE_2D, Some(&*texture));
 
     // Because images have to be downloaded over the internet
     // they might take a moment until they are ready.
@@ -620,15 +692,15 @@ fn load_texture(gl: &WebGlRenderingContext, url: &str) -> Result<Rc<WebGlTexture
     // use it immediately. When the image has finished downloading
     // we'll update the texture with the contents of the image.
     let level = 0;
-    let internal_format = WebGlRenderingContext::RGBA as i32;
+    let internal_format = GL::RGBA as i32;
     let width = 1;
     let height = 1;
     let border = 0;
-    let src_format = WebGlRenderingContext::RGBA;
-    let src_type = WebGlRenderingContext::UNSIGNED_BYTE;
+    let src_format = GL::RGBA;
+    let src_type = GL::UNSIGNED_BYTE;
     let pixel = [0u8, 255, 255, 255];
     gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
-        WebGlRenderingContext::TEXTURE_2D,
+        GL::TEXTURE_2D,
         level,
         internal_format,
         width,
@@ -639,21 +711,9 @@ fn load_texture(gl: &WebGlRenderingContext, url: &str) -> Result<Rc<WebGlTexture
         Some(&pixel),
     )
     .unwrap();
-    gl.tex_parameteri(
-        WebGlRenderingContext::TEXTURE_2D,
-        WebGlRenderingContext::TEXTURE_WRAP_S,
-        WebGlRenderingContext::REPEAT as i32,
-    );
-    gl.tex_parameteri(
-        WebGlRenderingContext::TEXTURE_2D,
-        WebGlRenderingContext::TEXTURE_WRAP_T,
-        WebGlRenderingContext::REPEAT as i32,
-    );
-    gl.tex_parameteri(
-        WebGlRenderingContext::TEXTURE_2D,
-        WebGlRenderingContext::TEXTURE_MIN_FILTER,
-        WebGlRenderingContext::LINEAR as i32,
-    );
+    gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_S, GL::REPEAT as i32);
+    gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::REPEAT as i32);
+    gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::LINEAR as i32);
 
     let image = Rc::new(HtmlImageElement::new().unwrap());
     let url_str = url.to_owned();
@@ -665,9 +725,9 @@ fn load_texture(gl: &WebGlRenderingContext, url: &str) -> Result<Rc<WebGlTexture
 
         let gl = get_context();
 
-        gl.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&*texture_clone));
+        gl.bind_texture(GL::TEXTURE_2D, Some(&*texture_clone));
         gl.tex_image_2d_with_u32_and_u32_and_image(
-            WebGlRenderingContext::TEXTURE_2D,
+            GL::TEXTURE_2D,
             level,
             internal_format,
             src_format,
@@ -681,25 +741,13 @@ fn load_texture(gl: &WebGlRenderingContext, url: &str) -> Result<Rc<WebGlTexture
         // power of 2 in both dimensions.
         if is_power_of_2(image_clone.width()) && is_power_of_2(image_clone.height()) {
             // Yes, it's a power of 2. Generate mips.
-            gl.generate_mipmap(WebGlRenderingContext::TEXTURE_2D);
+            gl.generate_mipmap(GL::TEXTURE_2D);
         } else {
             // No, it's not a power of 2. Turn off mips and set
             // wrapping to clamp to edge
-            gl.tex_parameteri(
-                WebGlRenderingContext::TEXTURE_2D,
-                WebGlRenderingContext::TEXTURE_WRAP_S,
-                WebGlRenderingContext::CLAMP_TO_EDGE as i32,
-            );
-            gl.tex_parameteri(
-                WebGlRenderingContext::TEXTURE_2D,
-                WebGlRenderingContext::TEXTURE_WRAP_T,
-                WebGlRenderingContext::CLAMP_TO_EDGE as i32,
-            );
-            gl.tex_parameteri(
-                WebGlRenderingContext::TEXTURE_2D,
-                WebGlRenderingContext::TEXTURE_MIN_FILTER,
-                WebGlRenderingContext::LINEAR as i32,
-            );
+            gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_S, GL::CLAMP_TO_EDGE as i32);
+            gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::CLAMP_TO_EDGE as i32);
+            gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::LINEAR as i32);
         }
     }) as Box<dyn FnMut()>);
     image.set_onload(Some(callback.as_ref().unchecked_ref()));
@@ -714,7 +762,7 @@ fn is_power_of_2(value: u32) -> bool {
     (value & (value - 1)) == 0
 }
 
-fn vertex_buffer_data(context: &WebGlRenderingContext, vertices: &[f32]) -> Result<(), JsValue> {
+fn vertex_buffer_data(context: &GL, vertices: &[f32]) -> Result<(), JsValue> {
     // Note that `Float32Array::view` is somewhat dangerous (hence the
     // `unsafe`!). This is creating a raw view into our module's
     // `WebAssembly.Memory` buffer, but if we allocate more pages for ourself
@@ -726,11 +774,13 @@ fn vertex_buffer_data(context: &WebGlRenderingContext, vertices: &[f32]) -> Resu
     unsafe {
         let vert_array = js_sys::Float32Array::view(vertices);
 
-        context.buffer_data_with_array_buffer_view(
-            WebGlRenderingContext::ARRAY_BUFFER,
-            &vert_array,
-            WebGlRenderingContext::STATIC_DRAW,
-        );
+        context.buffer_data_with_array_buffer_view(GL::ARRAY_BUFFER, &vert_array, GL::STATIC_DRAW);
     };
     Ok(())
+}
+
+fn enable_buffer(gl: &GL, buffer: &Option<WebGlBuffer>, elements: i32, vertex_position: u32) {
+    gl.bind_buffer(GL::ARRAY_BUFFER, buffer.as_ref());
+    gl.vertex_attrib_pointer_with_i32(vertex_position, elements, GL::FLOAT, false, 0, 0);
+    gl.enable_vertex_attrib_array(vertex_position);
 }

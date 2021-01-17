@@ -12,5 +12,6 @@ pub const BOSS_SIZE: f64 = 16.;
 pub const BULLET_SIZE: f64 = 8.;
 pub const BULLET_SPEED: f64 = 5.;
 pub const MISSILE_SPEED: f64 = 3.;
+pub const LIGHT_WIDTH: f64 = 3.;
 pub const EXPLODE_SIZE: f64 = 8.;
 pub const EXPLODE2_SIZE: f64 = 16.;

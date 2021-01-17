@@ -3,6 +3,7 @@
     "name": "rust-webpack-template",
     "version": "0.1.0",
     "scripts": {
+        "start": "webpack-dev-server --config webpack.dev.js --open -d",
         "build": "webpack --config webpack.prod.js",
         "serve": "webpack-dev-server --config webpack.dev.js"
     },

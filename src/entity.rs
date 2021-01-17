@@ -4,6 +4,7 @@ use crate::consts::*;
 use crate::ShooterState;
 use cgmath::{Matrix3, Matrix4, Rad, Vector2, Vector3};
 use std::rc::Rc;
+use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
 use web_sys::{
     WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlTexture, WebGlUniformLocation,
 };
@@ -52,7 +53,7 @@ impl Entity {
     /// Otherwise returns Some(reason) where reason is DeathReason.
     pub fn animate(&mut self) -> Option<DeathReason> {
         let pos = &mut self.pos;
-        for (i, size) in (0..2).zip([WIDTH, HEIGHT].iter()) {
+        for i in 0..2 {
             pos[i] += self.velo[i];
         }
         self.rotation += self.angular_velocity;
@@ -107,6 +108,21 @@ impl Entity {
     }
 }
 
+#[derive(PartialEq, Clone, Debug)]
+pub enum Weapon {
+    Bullet,
+    Light,
+    Missile,
+    Lightning,
+}
+
+pub const weapon_set: [(usize, Weapon, [f32; 3]); 4] = [
+    (0, Weapon::Bullet, [1., 0.5, 0.]),
+    (2, Weapon::Light, [1., 1., 1.]),
+    (3, Weapon::Missile, [0., 1., 0.]),
+    (4, Weapon::Lightning, [1., 1., 0.]),
+];
+
 pub struct Player {
     pub base: Entity,
     pub score: u32,
@@ -115,6 +131,7 @@ pub struct Player {
     // pub lives: u32,
     // /// invincibility time caused by death or bomb
     // pub invtime: u32,
+    pub weapon: Weapon,
     pub cooldown: u32,
 }
 
@@ -125,6 +142,7 @@ impl Player {
             score: 0,
             kills: 0,
             power: 0,
+            weapon: Weapon::Bullet,
             cooldown: 0,
         }
     }
@@ -197,6 +215,7 @@ pub struct Assets {
     pub player_texture: Rc<WebGlTexture>,
     pub bullet_texture: Rc<WebGlTexture>,
     pub enemy_bullet_texture: Rc<WebGlTexture>,
+    pub missile_tex: Rc<WebGlTexture>,
     pub explode_tex: Rc<WebGlTexture>,
     pub explode2_tex: Rc<WebGlTexture>,
 
@@ -222,12 +241,33 @@ impl Enemy {
         }
     }
 
+    pub fn get_id(&self) -> u32 {
+        self.get_base().id
+    }
+
     pub fn damage(&mut self, val: i32) {
         match self {
             Enemy::Enemy1(ref mut base) | Enemy::Boss(ref mut base) => {
                 base.0.health -= val;
                 console_log!("damaged: {}", base.0.health);
             }
+        }
+    }
+
+    pub fn predicted_damage(&self) -> i32 {
+        match self {
+            Enemy::Enemy1(base) | Enemy::Boss(base) => base.1,
+        }
+    }
+
+    pub fn add_predicted_damage(&mut self, val: i32) {
+        let e = self.get_base_mut();
+        e.1 += val;
+    }
+
+    pub fn total_health(&self) -> i32 {
+        match self {
+            _ => self.get_base().health,
         }
     }
 
@@ -291,12 +331,23 @@ pub struct BulletBase(pub Entity);
 pub enum Projectile {
     Bullet(BulletBase),
     EnemyBullet(BulletBase),
+    Missile {
+        base: BulletBase,
+        target: u32,
+        trail: Vec<[f64; 2]>,
+    },
 }
+
+const MISSILE_DETECTION_RANGE: f64 = 256.;
+const MISSILE_HOMING_SPEED: f64 = 0.25;
+const MISSILE_TRAIL_LENGTH: usize = 20;
+const MISSILE_DAMAGE: i32 = 5;
 
 impl Projectile {
     pub fn get_base<'b>(&'b self) -> &'b BulletBase {
         match &self {
             &Projectile::Bullet(base) | &Projectile::EnemyBullet(base) => base,
+            &Projectile::Missile { base, .. } => base,
         }
     }
 
@@ -342,6 +393,76 @@ impl Projectile {
         match self {
             Projectile::Bullet(base) => Self::animate_player_bullet(base, enemies, player),
             Projectile::EnemyBullet(base) => Self::animate_enemy_bullet(base, enemies, player),
+            Projectile::Missile {
+                base,
+                target,
+                trail,
+            } => {
+                if *target == 0 {
+                    let best = enemies.iter_mut().fold((0, 1e5, None), |bestpair, enemy| {
+                        let e = enemy.get_base();
+                        let dist = vec2_len(vec2_sub(base.0.pos, e.pos));
+                        if dist < MISSILE_DETECTION_RANGE
+                            && dist < bestpair.1
+                            && enemy.predicted_damage() < enemy.total_health()
+                        {
+                            (e.id, dist, Some(enemy))
+                        } else {
+                            bestpair
+                        }
+                    });
+                    *target = best.0;
+                    if let Some(enemy) = best.2 {
+                        enemy.add_predicted_damage(MISSILE_DAMAGE);
+                        println!(
+                            "Add predicted damage: {} -> {}",
+                            enemy.predicted_damage() - MISSILE_DAMAGE,
+                            enemy.predicted_damage()
+                        );
+                    }
+                } else if let Some(target_enemy) = enemies.iter().find(|e| e.get_id() == *target) {
+                    let target_ent = target_enemy.get_base();
+                    let norm = vec2_normalized(vec2_sub(target_ent.pos, base.0.pos));
+                    let desired_velo = vec2_scale(norm, MISSILE_SPEED);
+                    let desired_diff = vec2_sub(desired_velo, base.0.velo);
+                    if std::f64::EPSILON < vec2_square_len(desired_diff) {
+                        base.0.velo = if vec2_square_len(desired_diff)
+                            < MISSILE_HOMING_SPEED * MISSILE_HOMING_SPEED
+                        {
+                            desired_velo
+                        } else {
+                            let desired_diff_norm = vec2_normalized(desired_diff);
+                            vec2_add(
+                                base.0.velo,
+                                vec2_scale(desired_diff_norm, MISSILE_HOMING_SPEED),
+                            )
+                        };
+                        let angle = base.0.velo[1].atan2(base.0.velo[0]);
+                        base.0.rotation = (angle + std::f64::consts::FRAC_PI_2) as f32;
+                        let (s, c) = angle.sin_cos();
+                        base.0.velo[0] = MISSILE_SPEED * c;
+                        base.0.velo[1] = MISSILE_SPEED * s;
+                    }
+                } else {
+                    *target = 0
+                }
+                if MISSILE_TRAIL_LENGTH < trail.len() {
+                    trail.remove(0);
+                }
+                trail.push(base.0.pos);
+                let res = Self::animate_player_bullet(base, enemies, player);
+                if let Some(_) = res {
+                    if let Some(target_enemy) = enemies.iter_mut().find(|e| e.get_id() == *target) {
+                        target_enemy.add_predicted_damage(-MISSILE_DAMAGE);
+                        println!(
+                            "Reduce predicted damage: {} -> {}",
+                            target_enemy.predicted_damage() + MISSILE_DAMAGE,
+                            target_enemy.predicted_damage()
+                        );
+                    }
+                }
+                res
+            }
         }
     }
 
@@ -362,6 +483,7 @@ impl Projectile {
             match self {
                 Projectile::Bullet(_) => &assets.bullet_texture,
                 Projectile::EnemyBullet(_) => &assets.enemy_bullet_texture,
+                Projectile::Missile { .. } => &assets.missile_tex,
             },
             Some(BULLET_SIZE),
         );
@@ -374,6 +496,7 @@ pub struct TempEntity {
     pub max_frames: u32,
     pub width: u32,
     pub playback_rate: u32,
+    pub image_width: u32,
 }
 
 impl TempEntity {
@@ -403,8 +526,9 @@ impl TempEntity {
             <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform.cast().unwrap()),
         );
 
-        let tex_translate = Matrix3::from_translation(Vector2::new((frame) as f32, 0.));
-        let tex_scale = Matrix3::from_nonuniform_scale(1. / self.max_frames as f32, 1.);
+        let tex_translate = Matrix3::from_translation(Vector2::new(frame as f32, 0.));
+        let tex_scale =
+            Matrix3::from_nonuniform_scale(self.width as f32 / self.image_width as f32, 1.);
         context.uniform_matrix3fv_with_f32_array(
             assets.tex_transform_loc.as_ref(),
             false,

@@ -3,6 +3,7 @@ import player from "../assets/player.png";
 import bullet from "../assets/bullet.png";
 import ebullet from "../assets/ebullet.png";
 import boss from "../assets/boss.png";
+import missile from "../assets/missile.png";
 import explode from "../assets/explode.png";
 import explode2 from "../assets/explode2.png";
 
@@ -20,6 +21,7 @@ rust
       ["bullet", bullet],
       ["ebullet", ebullet],
       ["boss", boss],
+      ["missile", missile],
       ["explode", explode],
       ["explode2", explode2],
     ];

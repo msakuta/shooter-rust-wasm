@@ -23,6 +23,7 @@ mod xor128;
 use crate::consts::*;
 use crate::entity::{
     Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Player, Projectile, TempEntity,
+    Weapon,
 };
 use crate::xor128::Xor128;
 
@@ -65,6 +66,7 @@ pub struct ShooterState {
     tent: Vec<TempEntity>,
     rng: Xor128,
     shots_bullet: usize,
+    shots_missile: usize,
 
     shoot_pressed: bool,
     left_pressed: bool,
@@ -122,6 +124,7 @@ impl ShooterState {
             tent: vec![],
             rng: Xor128::new(3232132),
             shots_bullet: 0,
+            shots_missile: 0,
             shoot_pressed: false,
             left_pressed: false,
             right_pressed: false,
@@ -135,6 +138,7 @@ impl ShooterState {
                 player_texture: load_texture_local("player")?,
                 bullet_texture: load_texture_local("bullet")?,
                 enemy_bullet_texture: load_texture_local("ebullet")?,
+                missile_tex: load_texture_local("missile")?,
                 explode_tex: load_texture_local("explode")?,
                 explode2_tex: load_texture_local("explode2")?,
                 sprite_shader: None,
@@ -156,6 +160,13 @@ impl ShooterState {
             68 => self.right_pressed = true,
             87 => self.up_pressed = true,
             83 => self.down_pressed = true,
+            88 | 90 => {
+                self.player.weapon = if self.player.weapon == Weapon::Bullet {
+                    Weapon::Missile
+                } else {
+                    Weapon::Bullet
+                }
+            }
             _ => (),
         }
     }
@@ -310,6 +321,7 @@ impl ShooterState {
                 max_frames,
                 width: if is_bullet { 16 } else { 32 },
                 playback_rate,
+                image_width: if is_bullet { 128 } else { 256 },
             });
 
             console_log!("tent: {}", state.tent.len());
@@ -403,19 +415,37 @@ impl ShooterState {
         }
 
         if self.shoot_pressed && self.player.cooldown == 0 {
-            let shoot_period = 5;
+            let weapon = &self.player.weapon;
+            let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
 
             if self.time % 5 == 0 {
                 let level = self.player.power_level() as i32;
                 self.player.cooldown += shoot_period;
                 for i in -1 - level..2 + level {
-                    let speed = BULLET_SPEED;
-                    let ent =
+                    let speed = if let Weapon::Bullet = weapon {
+                        BULLET_SPEED
+                    } else {
+                        MISSILE_SPEED
+                    };
+                    let mut ent =
                         Entity::new(&mut self.id_gen, self.player.base.pos, [i as f64, -speed])
                             .rotation((i as f32).atan2(speed as f32));
-                    self.shots_bullet += 1;
-                    self.bullets
-                        .insert(ent.id, Projectile::Bullet(BulletBase(ent)));
+                    if let Weapon::Bullet = weapon {
+                        self.shots_bullet += 1;
+                        self.bullets
+                            .insert(ent.id, Projectile::Bullet(BulletBase(ent)));
+                    } else {
+                        self.shots_missile += 1;
+                        ent = ent.health(5);
+                        self.bullets.insert(
+                            ent.id,
+                            Projectile::Missile {
+                                base: BulletBase(ent),
+                                target: 0,
+                                trail: vec![],
+                            },
+                        );
+                    }
                 }
             }
         }
@@ -476,9 +506,15 @@ impl ShooterState {
                 bullet.draw(self, &context, &self.assets);
                 if let Some(reason) = bullet.animate_bullet(&mut self.enemies, &mut self.player) {
                     match reason {
-                        DeathReason::Killed | DeathReason::HitPlayer => {
-                            add_tent(true, &bullet.get_base().0.pos, self)
-                        }
+                        DeathReason::Killed | DeathReason::HitPlayer => add_tent(
+                            if let Projectile::Missile { .. } = bullet {
+                                false
+                            } else {
+                                true
+                            },
+                            &bullet.get_base().0.pos,
+                            self,
+                        ),
                         _ => {}
                     }
                     None
@@ -521,7 +557,8 @@ impl ShooterState {
         set_text("frame", &format!("Frame {}", self.time));
         set_text("score", &format!("Score {}", self.player.score));
         set_text("kills", &format!("Kills {}", self.player.kills));
-        set_text("shots", &format!("Shots {}", self.shots_bullet));
+        set_text("shots", &format!("Shots {}/{}", self.shots_bullet, self.shots_missile));
+        set_text("weapon", &format!("Weapon {:#?}", self.player.weapon));
 
         Ok(())
     }

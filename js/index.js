@@ -42,15 +42,16 @@ lightningInElement.style.backgroundImage = `url(${weapons})`;
 lightningInElement.style.backgroundPosition = `-128px 0px`;
 
 function updateWeapons(weapon){
-  bulletsElement.style.filter = "grayscale()";
-  missilesElement.style.filter = "grayscale()";
-  lightElement.style.filter = "grayscale()";
-  lightningElement.style.filter = "grayscale()";
+  const dark = "grayscale() brightness(0.75)";
+  bulletsElement.style.filter = dark;
+  missilesElement.style.filter = dark;
+  lightElement.style.filter = dark;
+  lightningElement.style.filter = dark;
   switch (weapon) {
-    case "Bullet": bulletsElement.style.filter = `hue-rotate(90deg) brightness(1.3)`; break;
-    case "Missile": missilesElement.style.filter = " brightness(1.3)"; break;
+    case "Bullet": bulletsElement.style.filter = `hue-rotate(90deg) brightness(1.2)`; break;
     case "Light": lightElement.style.filter = "grayscale() brightness(1.45)"; break;
-    case "Lightning": lightningElement.style.filter = "hue-rotate(30deg) brightness(1.3)"; break;
+    case "Missile": missilesElement.style.filter = " brightness(1.2)"; break;
+    case "Lightning": lightningElement.style.filter = "hue-rotate(30deg) brightness(1.2)"; break;
   }
 }
 

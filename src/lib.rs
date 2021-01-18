@@ -1,4 +1,5 @@
 use cgmath::{Matrix3, Matrix4, Vector3};
+use js_sys::JsString;
 use slice_of_array::SliceFlatExt;
 use std::rc::Rc;
 use std::{collections::HashMap, vec};
@@ -204,6 +205,8 @@ impl ShooterState {
                 back_tex: load_texture_local("back")?,
                 power_tex: load_texture_local("power")?,
                 power2_tex: load_texture_local("power2")?,
+                sphere_tex: load_texture_local("sphere")?,
+                weapons_tex: load_texture_local("weapons")?,
                 sprite_shader: None,
                 trail_shader: None,
                 rect_buffer: None,
@@ -212,7 +215,7 @@ impl ShooterState {
         })
     }
 
-    pub fn key_down(&mut self, event: web_sys::KeyboardEvent) {
+    pub fn key_down(&mut self, event: web_sys::KeyboardEvent) -> Result<JsString, JsValue> {
         println!("key: {}", event.key_code());
         match event.key_code() {
             32 => self.shoot_pressed = true,
@@ -275,6 +278,7 @@ impl ShooterState {
             }
             _ => (),
         }
+        Ok(JsString::from(self.player.weapon.to_string()))
     }
 
     pub fn key_up(&mut self, event: web_sys::KeyboardEvent) {

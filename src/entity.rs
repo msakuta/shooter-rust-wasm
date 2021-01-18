@@ -117,6 +117,12 @@ pub enum Weapon {
     Lightning,
 }
 
+impl Weapon {
+    pub fn to_string(&self) -> String {
+        format!("{:?}", self)
+    }
+}
+
 pub const weapon_set: [(usize, Weapon, [f32; 3]); 4] = [
     (0, Weapon::Bullet, [1., 0.5, 0.]),
     (2, Weapon::Light, [1., 1., 1.]),
@@ -265,6 +271,8 @@ pub struct Assets {
     pub back_tex: Rc<WebGlTexture>,
     pub power_tex: Rc<WebGlTexture>,
     pub power2_tex: Rc<WebGlTexture>,
+    pub sphere_tex: Rc<WebGlTexture>,
+    pub weapons_tex: Rc<WebGlTexture>,
 
     pub sprite_shader: Option<ShaderBundle>,
     pub trail_shader: Option<ShaderBundle>,

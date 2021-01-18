@@ -11,6 +11,50 @@ import beam from "../assets/beam.png";
 import back from "../assets/back2.jpg";
 import power from "../assets/power.png";
 import power2 from "../assets/power2.png";
+import sphere from "../assets/sphere.png";
+import weapons from "../assets/weapons.png";
+
+const bulletsElement = document.getElementById("bullets");
+bulletsElement.style.backgroundImage = `url(${sphere})`;
+
+const bulletsInElement = document.getElementById("bulletsIn");
+bulletsInElement.style.backgroundImage = `url(${weapons})`;
+
+const missilesElement = document.getElementById("missiles");
+missilesElement.style.backgroundImage = `url(${sphere})`;
+
+const missilesInElement = document.getElementById("missilesIn");
+missilesInElement.style.backgroundImage = `url(${weapons})`;
+missilesInElement.style.backgroundPosition = `-96px 0px`;
+
+const lightElement = document.getElementById("light");
+lightElement.style.backgroundImage = `url(${sphere})`;
+
+const lightInElement = document.getElementById("lightIn");
+lightInElement.style.backgroundImage = `url(${weapons})`;
+lightInElement.style.backgroundPosition = `-64px 0px`;
+
+const lightningElement = document.getElementById("lightning");
+lightningElement.style.backgroundImage = `url(${sphere})`;
+
+const lightningInElement = document.getElementById("lightningIn");
+lightningInElement.style.backgroundImage = `url(${weapons})`;
+lightningInElement.style.backgroundPosition = `-128px 0px`;
+
+function updateWeapons(weapon){
+  bulletsElement.style.filter = "grayscale()";
+  missilesElement.style.filter = "grayscale()";
+  lightElement.style.filter = "grayscale()";
+  lightningElement.style.filter = "grayscale()";
+  switch (weapon) {
+    case "Bullet": bulletsElement.style.filter = `hue-rotate(90deg) brightness(1.3)`; break;
+    case "Missile": missilesElement.style.filter = " brightness(1.3)"; break;
+    case "Light": lightElement.style.filter = "grayscale() brightness(1.45)"; break;
+    case "Lightning": lightningElement.style.filter = "hue-rotate(30deg) brightness(1.3)"; break;
+  }
+}
+
+updateWeapons("Bullet");
 
 // Note that a dynamic `import` statement here is required due to
 // webpack/webpack#6615, but in theory `import { greet } from './pkg';`
@@ -34,12 +78,17 @@ rust
       ["back", back],
       ["power", power],
       ["power2", power2],
+      ["sphere", sphere],
+      ["weapons", weapons],
     ];
     let state = new module.ShooterState(image_assets);
 
     state.start();
 
-    document.addEventListener("keydown", (event) => state.key_down(event));
+    document.addEventListener("keydown", (event) => {
+      const weapon = state.key_down(event);
+      updateWeapons(weapon);
+    });
     document.addEventListener("keyup", (event) => state.key_up(event));
 
     const restartButton = document.getElementById("restart");

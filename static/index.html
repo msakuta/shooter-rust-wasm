@@ -38,6 +38,12 @@
         .hidden {
             display: none;
         }
+
+        .iconContainer {
+            position: absolute;
+            width: 32px;
+            height: 32px;
+        }
     </style>
     <body>
         <h1>shooter-rust-wasm</h1>
@@ -57,6 +63,20 @@
                 <div id="power">Power: 0</div>
                 <div id="shots">Shots: 0</div>
                 <div id="weapon">Weapon: 0</div>
+                <div id="weapons" style="position: relative; height: 32px">
+                    <span id="bullets" class="iconContainer">
+                        <span id="bulletsIn" class="iconContainer"></span>
+                    </span>
+                    <span id="light" class="iconContainer" style="left: 32px">
+                        <span id="lightIn" class="iconContainer"></span>
+                    </span>
+                    <span id="missiles" class="iconContainer" style="left: 64px">
+                        <span id="missilesIn" class="iconContainer"></span>
+                    </span>
+                    <span id="lightning" class="iconContainer" style="left: 96px">
+                        <span id="lightningIn" class="iconContainer"></span>
+                    </span>
+                </div>
             </div>
         </div>
         <hr>

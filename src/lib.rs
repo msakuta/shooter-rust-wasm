@@ -3,6 +3,7 @@ use js_sys::JsString;
 use slice_of_array::SliceFlatExt;
 use std::rc::Rc;
 use std::{collections::HashMap, vec};
+use vecmath::{vec2_add, vec2_normalized, vec2_scale, vec2_sub};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
@@ -678,6 +679,128 @@ impl ShooterState {
                         }
                     }
                     self.enemies = enemies;
+                } else if Weapon::Lightning == *weapon {
+                    let nmax = std::cmp::min(
+                        (self.player.power_level() + 1 + self.time as u32 % 2) / 2,
+                        31,
+                    );
+
+                    // Random walk with momentum
+                    fn next_lightning(rng: &mut Xor128, a: &mut [f64; 4]) {
+                        a[2] += LIGHTNING_ACCEL * (rng.next() - 0.5) - a[2] * LIGHTNING_FEEDBACK;
+                        a[3] += LIGHTNING_ACCEL * (rng.next() - 0.5) - a[3] * LIGHTNING_FEEDBACK;
+                        a[0] += a[2];
+                        a[1] += a[3];
+                    }
+
+                    let gl = &context;
+
+                    for _ in 0..nmax {
+                        // Use the same seed twice to reproduce random sequence
+                        let seed = self.rng.nexti();
+
+                        // Lambda to call the same lightning sequence twice, first pass for detecting hit enemy
+                        // and second pass for rendering.
+                        let lightning = |state: &mut Self, seed: u32, length: u32, f: &mut dyn FnMut(&mut Self, &[f64; 4]) -> bool| {
+                            let mut rng2 = Xor128::new(seed);
+                            let mut a = [state.player.base.pos[0],state.player.base.pos[1], 0., -16.];
+                            for i in 0..length {
+                                let ox = a[0];
+                                let oy = a[1];
+                                next_lightning(&mut rng2, &mut a);
+                                let segment = [ox, oy, a[0], a[1]];
+                                if !f(state, &segment) {
+                                    return i;
+                                }
+                            }
+                            length
+                        };
+
+                        let length = lightning(
+                            self,
+                            seed,
+                            LIGHTNING_VERTICES,
+                            &mut |state: &mut Self, segment: &[f64; 4]| {
+                                let b = [segment[2], segment[3]];
+                                for enemy in state.enemies.iter_mut() {
+                                    let ebb = enemy.get_bb();
+                                    if ebb[0] < b[0] + 4.
+                                        && b[0] - 4. <= ebb[2]
+                                        && ebb[1] < b[1] + 4.
+                                        && b[1] - 4. <= ebb[3]
+                                    {
+                                        enemy.damage(2 + state.rng.gen_range(0, 3) as i32);
+                                        add_tent(true, &b, state);
+                                        return false;
+                                    }
+                                }
+                                return true;
+                            },
+                        );
+                        let hit = length != LIGHTNING_VERTICES;
+
+                        gl.use_program(Some(&self.assets.trail_shader.as_ref().unwrap().program));
+                        let shader = self.assets.trail_shader.as_ref().unwrap();
+
+                        gl.uniform1i(shader.texture_loc.as_ref(), 0);
+                        gl.bind_texture(GL::TEXTURE_2D, Some(&self.assets.beam_tex));
+
+                        enable_buffer(gl, &self.assets.trail_buffer, 4, shader.vertex_position);
+
+                        let mut vertices = vec![];
+                        let mut prev_node_opt = None;
+
+                        lightning(self, seed, length, &mut |state, segment: &[f64; 4]| {
+                            // line(if hit { col } else { col2 }, if hit { 2. } else { 1. }, *segment, context.transform, graphics);
+                            let prev_node = if let Some(node) = prev_node_opt {
+                                node
+                            } else {
+                                prev_node_opt = Some([segment[0], segment[1]]);
+                                return true;
+                            };
+                            let width = if hit { 2. } else { 1. };
+                            let this_node = [segment[0], segment[1]];
+                            let delta = vec2_normalized(vec2_sub(this_node, prev_node));
+                            let perp = vec2_scale([delta[1], -delta[0]], width);
+                            let top = vec2_add(prev_node, perp);
+                            let bottom = vec2_sub(prev_node, perp);
+                            vertices.extend_from_slice(&[top[0] as f32, top[1] as f32, 0., -0.1]);
+                            vertices.extend_from_slice(&[
+                                bottom[0] as f32,
+                                bottom[1] as f32,
+                                0.,
+                                1.1,
+                            ]);
+                            prev_node_opt = Some([segment[0], segment[1]]);
+                            true
+                        });
+
+                        vertex_buffer_data(gl, &vertices).unwrap();
+
+                        let shader = self.assets.trail_shader.as_ref().unwrap();
+                        gl.uniform_matrix4fv_with_f32_array(
+                            shader.transform_loc.as_ref(),
+                            false,
+                            <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(
+                                &self.assets.world_transform.cast().unwrap(),
+                            ),
+                        );
+
+                        gl.uniform_matrix3fv_with_f32_array(
+                            shader.tex_transform_loc.as_ref(),
+                            false,
+                            <Matrix3<f32> as AsRef<[f32; 9]>>::as_ref(&Matrix3::from_scale(1.)),
+                        );
+
+                        gl.draw_arrays(GL::TRIANGLE_STRIP, 0, (vertices.len() / 4) as i32);
+
+                        enable_buffer(
+                            gl,
+                            &self.assets.rect_buffer,
+                            2,
+                            self.assets.sprite_shader.as_ref().unwrap().vertex_position,
+                        );
+                    }
                 }
             }
             if self.player.cooldown < 1 {

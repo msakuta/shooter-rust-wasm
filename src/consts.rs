@@ -19,3 +19,7 @@ pub const EXPLODE_SIZE: f64 = 8.;
 pub const EXPLODE2_SIZE: f64 = 16.;
 pub const ITEM_SIZE: f64 = 6.;
 pub const ITEM2_SIZE: f64 = 12.;
+
+pub const LIGHTNING_ACCEL: f64 = 8.0;
+pub const LIGHTNING_FEEDBACK: f64 = 0.1;
+pub const LIGHTNING_VERTICES: u32 = 32;

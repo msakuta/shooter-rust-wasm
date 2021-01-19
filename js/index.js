@@ -2,7 +2,10 @@ import enemy from "../assets/enemy.png";
 import player from "../assets/player.png";
 import bullet from "../assets/bullet.png";
 import ebullet from "../assets/ebullet.png";
+import phaseBullet from "../assets/phase-bullet.png";
+import spiralBullet from "../assets/spiral-bullet.png";
 import boss from "../assets/boss.png";
+import spiralEnemy from "../assets/spiral-enemy.png";
 import missile from "../assets/missile.png";
 import explode from "../assets/explode.png";
 import explode2 from "../assets/explode2.png";
@@ -70,7 +73,10 @@ rust
       ["player", player],
       ["bullet", bullet],
       ["ebullet", ebullet],
+      ["phaseBullet", phaseBullet],
+      ["spiralBullet", spiralBullet],
       ["boss", boss],
+      ["spiralEnemy", spiralEnemy],
       ["missile", missile],
       ["explode", explode],
       ["explode2", explode2],

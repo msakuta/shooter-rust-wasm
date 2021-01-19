@@ -1,6 +1,7 @@
 use core::f64;
 
 use crate::consts::*;
+use crate::xor128::Xor128;
 use crate::{enable_buffer, vertex_buffer_data, ShooterState};
 use cgmath::{Matrix3, Matrix4, Rad, Vector2, Vector3};
 use std::rc::Rc;
@@ -214,6 +215,7 @@ impl EnemyBase {
 pub enum Enemy {
     Enemy1(EnemyBase),
     Boss(EnemyBase),
+    SpiralEnemy(EnemyBase),
 }
 
 pub struct ShaderBundle {
@@ -260,9 +262,12 @@ pub struct Assets {
 
     pub enemy_tex: Rc<WebGlTexture>,
     pub boss_tex: Rc<WebGlTexture>,
+    pub spiral_enemy_tex: Rc<WebGlTexture>,
     pub player_texture: Rc<WebGlTexture>,
     pub bullet_texture: Rc<WebGlTexture>,
     pub enemy_bullet_texture: Rc<WebGlTexture>,
+    pub phase_bullet_tex: Rc<WebGlTexture>,
+    pub spiral_bullet_tex: Rc<WebGlTexture>,
     pub missile_tex: Rc<WebGlTexture>,
     pub explode_tex: Rc<WebGlTexture>,
     pub explode2_tex: Rc<WebGlTexture>,
@@ -283,13 +288,15 @@ pub struct Assets {
 impl Enemy {
     pub fn get_base(&self) -> &Entity {
         match self {
-            Enemy::Enemy1(base) | Enemy::Boss(base) => &base.0,
+            Enemy::Enemy1(base) | Enemy::Boss(base) | Enemy::SpiralEnemy(base) => &base.0,
         }
     }
 
     pub fn get_base_mut(&mut self) -> &mut EnemyBase {
         match self {
-            Enemy::Enemy1(ref mut base) | Enemy::Boss(ref mut base) => base,
+            Enemy::Enemy1(ref mut base)
+            | Enemy::Boss(ref mut base)
+            | Enemy::SpiralEnemy(ref mut base) => base,
         }
     }
 
@@ -299,7 +306,9 @@ impl Enemy {
 
     pub fn damage(&mut self, val: i32) {
         match self {
-            Enemy::Enemy1(ref mut base) | Enemy::Boss(ref mut base) => {
+            Enemy::Enemy1(ref mut base)
+            | Enemy::Boss(ref mut base)
+            | Enemy::SpiralEnemy(ref mut base) => {
                 base.0.health -= val;
                 console_log!("damaged: {}", base.0.health);
             }
@@ -308,7 +317,7 @@ impl Enemy {
 
     pub fn predicted_damage(&self) -> i32 {
         match self {
-            Enemy::Enemy1(base) | Enemy::Boss(base) => base.1,
+            Enemy::Enemy1(base) | Enemy::Boss(base) | Enemy::SpiralEnemy(base) => base.1,
         }
     }
 
@@ -330,19 +339,66 @@ impl Enemy {
         }
     }
 
-    pub fn animate(&mut self, state: &mut ShooterState) -> Option<DeathReason> {
-        let x: u32 = state.rng.gen_range(0, 64);
+    fn gen_bullets(
+        &mut self,
+        id_gen: &mut u32,
+        bullets: &mut std::collections::HashMap<u32, Projectile>,
+        rng: &mut Xor128,
+        create_fn: impl Fn(BulletBase) -> Projectile,
+    ) {
+        let x = rng.gen_range(0, 256);
         if x == 0 {
-            let eb = Projectile::EnemyBullet(BulletBase(Entity::new(
+            use std::f64::consts::PI;
+            let bullet_count = 10;
+            let phase_offset = rng.next() * PI;
+            for i in 0..bullet_count {
+                let angle = 2. * PI * i as f64 / bullet_count as f64 + phase_offset;
+                let eb = create_fn(BulletBase(
+                    Entity::new(
+                        id_gen,
+                        self.get_base().pos,
+                        vec2_scale([angle.cos(), angle.sin()], 1.),
+                    )
+                    .rotation(angle as f32),
+                ));
+                bullets.insert(eb.get_id(), eb);
+            }
+        }
+    }
+
+    pub fn animate(&mut self, state: &mut ShooterState) -> Option<DeathReason> {
+        if self.is_boss() {
+            self.gen_bullets(
                 &mut state.id_gen,
-                self.get_base().pos,
-                [state.rng.next() - 0.5, state.rng.next() - 0.5],
-            )));
-            state.bullets.insert(eb.get_id(), eb);
+                &mut state.bullets,
+                &mut state.rng,
+                |base| Projectile::new_phase(base),
+            );
+        } else if let Enemy::SpiralEnemy(_) = self {
+            self.gen_bullets(
+                &mut state.id_gen,
+                &mut state.bullets,
+                &mut state.rng,
+                |base| Projectile::new_spiral(base),
+            );
+        } else {
+            let x: u32 = state.rng.gen_range(0, 64);
+            if x == 0 {
+                let eb = Projectile::EnemyBullet(BulletBase(Entity::new(
+                    &mut state.id_gen,
+                    self.get_base().pos,
+                    [state.rng.next() - 0.5, state.rng.next() - 0.5],
+                )));
+                state.bullets.insert(eb.get_id(), eb);
+            }
         }
 
         match self {
             Enemy::Enemy1(ref mut base) | Enemy::Boss(ref mut base) => base.0.animate(),
+            Enemy::SpiralEnemy(ref mut base) => {
+                base.0.rotation -= std::f32::consts::PI * 0.01;
+                base.0.animate()
+            }
         }
     }
 
@@ -353,10 +409,11 @@ impl Enemy {
             match self {
                 Enemy::Enemy1(_) => &assets.enemy_tex,
                 Enemy::Boss(_) => &assets.boss_tex,
+                Enemy::SpiralEnemy(_) => &assets.spiral_enemy_tex,
             },
             Some(match self {
                 Enemy::Enemy1(_) => ENEMY_SIZE,
-                Enemy::Boss(_) => BOSS_SIZE,
+                Enemy::Boss(_) | Enemy::SpiralEnemy(_) => BOSS_SIZE,
             }),
         );
     }
@@ -383,6 +440,10 @@ impl Enemy {
             _ => false,
         }
     }
+
+    pub fn new_spiral(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Enemy {
+        Enemy::SpiralEnemy(EnemyBase::new(id_gen, pos, velo))
+    }
 }
 
 pub struct BulletBase(pub Entity);
@@ -390,6 +451,16 @@ pub struct BulletBase(pub Entity);
 pub enum Projectile {
     Bullet(BulletBase),
     EnemyBullet(BulletBase),
+    PhaseBullet {
+        base: BulletBase,
+        velo: [f64; 2],
+        phase: f64,
+    },
+    SpiralBullet {
+        base: BulletBase,
+        speed: f64,
+        traveled: f64,
+    },
     Missile {
         base: BulletBase,
         target: u32,
@@ -404,9 +475,28 @@ const MISSILE_TRAIL_LENGTH: usize = 20;
 const MISSILE_DAMAGE: i32 = 5;
 
 impl Projectile {
+    pub fn new_phase(base: BulletBase) -> Projectile {
+        let velo = base.0.velo;
+        Projectile::PhaseBullet {
+            base,
+            velo,
+            phase: 0.,
+        }
+    }
+
+    pub fn new_spiral(base: BulletBase) -> Projectile {
+        let speed = vec2_len(base.0.velo);
+        Projectile::SpiralBullet {
+            base,
+            speed,
+            traveled: 0.,
+        }
+    }
+
     pub fn get_base<'b>(&'b self) -> &'b BulletBase {
         match &self {
             &Projectile::Bullet(base) | &Projectile::EnemyBullet(base) => base,
+            &Projectile::PhaseBullet { base, .. } | &Projectile::SpiralBullet { base, .. } => base,
             &Projectile::Missile { base, .. } => base,
         }
     }
@@ -453,6 +543,23 @@ impl Projectile {
         match self {
             Projectile::Bullet(base) => Self::animate_player_bullet(base, enemies, player),
             Projectile::EnemyBullet(base) => Self::animate_enemy_bullet(base, enemies, player),
+            Projectile::PhaseBullet { base, velo, phase } => {
+                base.0.velo = vec2_scale(*velo, (phase.sin() + 1.) / 2.);
+                *phase += 0.02 * std::f64::consts::PI;
+                Self::animate_enemy_bullet(base, enemies, player)
+            }
+            Projectile::SpiralBullet {
+                base,
+                speed,
+                traveled,
+            } => {
+                let rotation =
+                    base.0.rotation as f64 - 0.02 * std::f64::consts::PI / (*traveled * 0.05 + 1.);
+                base.0.rotation = rotation as f32;
+                base.0.velo = vec2_scale([rotation.cos(), rotation.sin()], *speed);
+                *traveled += *speed;
+                Self::animate_enemy_bullet(base, enemies, player)
+            }
             Projectile::Missile {
                 base,
                 target,
@@ -607,6 +714,8 @@ impl Projectile {
             match self {
                 Projectile::Bullet(_) => &assets.bullet_texture,
                 Projectile::EnemyBullet(_) => &assets.enemy_bullet_texture,
+                Projectile::PhaseBullet { .. } => &assets.phase_bullet_tex,
+                Projectile::SpiralBullet { .. } => &assets.spiral_bullet_tex,
                 Projectile::Missile { .. } => &assets.missile_tex,
             },
             Some(BULLET_SIZE),

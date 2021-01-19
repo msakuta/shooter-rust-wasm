@@ -195,9 +195,12 @@ impl ShooterState {
                     * &Matrix4::from_nonuniform_scale(2. / FWIDTH, -2. / FHEIGHT, 1.),
                 enemy_tex: load_texture_local("enemy")?,
                 boss_tex: load_texture_local("boss")?,
+                spiral_enemy_tex: load_texture_local("spiralEnemy")?,
                 player_texture: load_texture_local("player")?,
                 bullet_texture: load_texture_local("bullet")?,
                 enemy_bullet_texture: load_texture_local("ebullet")?,
+                phase_bullet_tex: load_texture_local("phaseBullet")?,
+                spiral_bullet_tex: load_texture_local("spiralBullet")?,
                 missile_tex: load_texture_local("missile")?,
                 explode_tex: load_texture_local("explode")?,
                 explode2_tex: load_texture_local("explode2")?,
@@ -479,16 +482,21 @@ impl ShooterState {
             let dice = 256;
             let rng = &mut self.rng;
             let mut i = rng.gen_range(0, dice);
-            let [enemy_count, boss_count] = self.enemies.iter().fold([0; 2], |mut c, e| match e {
-                Enemy::Enemy1(_) => {
-                    c[0] += 1;
-                    c
-                }
-                Enemy::Boss(_) => {
-                    c[1] += 1;
-                    c
-                }
-            });
+            let [enemy_count, boss_count, spiral_count] =
+                self.enemies.iter().fold([0; 3], |mut c, e| match e {
+                    Enemy::Enemy1(_) => {
+                        c[0] += 1;
+                        c
+                    }
+                    Enemy::Boss(_) => {
+                        c[1] += 1;
+                        c
+                    }
+                    Enemy::SpiralEnemy(_) => {
+                        c[2] += 1;
+                        c
+                    }
+                });
             let gen_amount = 4;
             while i < gen_amount {
                 let weights = [
@@ -502,6 +510,7 @@ impl ShooterState {
                         0
                     },
                     if boss_count < 32 { 4 } else { 0 },
+                    if spiral_count < 4 { 4 } else { 0 },
                 ];
                 let allweights = weights.iter().fold(0, |sum, x| sum + x);
                 let accum = {
@@ -545,9 +554,10 @@ impl ShooterState {
                             0 => {
                                 Enemy::Enemy1(EnemyBase::new(&mut self.id_gen, pos, velo).health(3))
                             }
-                            _ => {
+                            1 => {
                                 Enemy::Boss(EnemyBase::new(&mut self.id_gen, pos, velo).health(64))
                             }
+                            _ => Enemy::new_spiral(&mut self.id_gen, pos, velo),
                         });
                     }
                 }

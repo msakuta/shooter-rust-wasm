@@ -47,7 +47,7 @@ mod xor128;
 use crate::consts::*;
 use crate::entity::{
     Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Player, Projectile,
-    ShaderBundle, TempEntity, Weapon,
+    ShaderBundle, ShieldedBoss, TempEntity, Weapon,
 };
 use crate::xor128::Xor128;
 
@@ -195,6 +195,7 @@ impl ShooterState {
                     * &Matrix4::from_nonuniform_scale(2. / FWIDTH, -2. / FHEIGHT, 1.),
                 enemy_tex: load_texture_local("enemy")?,
                 boss_tex: load_texture_local("boss")?,
+                shield_tex: load_texture_local("shield")?,
                 spiral_enemy_tex: load_texture_local("spiralEnemy")?,
                 player_texture: load_texture_local("player")?,
                 bullet_texture: load_texture_local("bullet")?,
@@ -482,8 +483,8 @@ impl ShooterState {
             let dice = 256;
             let rng = &mut self.rng;
             let mut i = rng.gen_range(0, dice);
-            let [enemy_count, boss_count, spiral_count] =
-                self.enemies.iter().fold([0; 3], |mut c, e| match e {
+            let [enemy_count, boss_count, shielded_boss_count, spiral_count] =
+                self.enemies.iter().fold([0; 4], |mut c, e| match e {
                     Enemy::Enemy1(_) => {
                         c[0] += 1;
                         c
@@ -492,8 +493,12 @@ impl ShooterState {
                         c[1] += 1;
                         c
                     }
-                    Enemy::SpiralEnemy(_) => {
+                    Enemy::ShieldedBoss(_) => {
                         c[2] += 1;
+                        c
+                    }
+                    Enemy::SpiralEnemy(_) => {
+                        c[3] += 1;
                         c
                     }
                 });
@@ -556,6 +561,9 @@ impl ShooterState {
                             }
                             1 => {
                                 Enemy::Boss(EnemyBase::new(&mut self.id_gen, pos, velo).health(64))
+                            }
+                            2 => {
+                                Enemy::ShieldedBoss(ShieldedBoss::new(&mut self.id_gen, pos, velo))
                             }
                             _ => Enemy::new_spiral(&mut self.id_gen, pos, velo),
                         });
@@ -984,7 +992,10 @@ impl ShooterState {
         set_text("frame", &format!("Frame: {}", self.time));
         set_text("score", &format!("Score: {}", self.player.score));
         set_text("kills", &format!("Kills: {}", self.player.kills));
-        set_text("difficulty", &format!("Difficulty Level: {}", self.player.difficulty_level()));
+        set_text(
+            "difficulty",
+            &format!("Difficulty Level: {}", self.player.difficulty_level()),
+        );
         set_text(
             "power",
             &format!(

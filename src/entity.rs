@@ -212,9 +212,24 @@ impl EnemyBase {
     }
 }
 
+pub struct ShieldedBoss {
+    pub base: EnemyBase,
+    pub shield_health: i32,
+}
+
+impl ShieldedBoss {
+    pub fn new(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Self {
+        Self {
+            base: EnemyBase(Entity::new(id_gen, pos, velo).health(64), 0),
+            shield_health: 64,
+        }
+    }
+}
+
 pub enum Enemy {
     Enemy1(EnemyBase),
     Boss(EnemyBase),
+    ShieldedBoss(ShieldedBoss),
     SpiralEnemy(EnemyBase),
 }
 
@@ -262,6 +277,7 @@ pub struct Assets {
 
     pub enemy_tex: Rc<WebGlTexture>,
     pub boss_tex: Rc<WebGlTexture>,
+    pub shield_tex: Rc<WebGlTexture>,
     pub spiral_enemy_tex: Rc<WebGlTexture>,
     pub player_texture: Rc<WebGlTexture>,
     pub bullet_texture: Rc<WebGlTexture>,
@@ -289,6 +305,7 @@ impl Enemy {
     pub fn get_base(&self) -> &Entity {
         match self {
             Enemy::Enemy1(base) | Enemy::Boss(base) | Enemy::SpiralEnemy(base) => &base.0,
+            Enemy::ShieldedBoss(boss) => &boss.base.0,
         }
     }
 
@@ -297,6 +314,7 @@ impl Enemy {
             Enemy::Enemy1(ref mut base)
             | Enemy::Boss(ref mut base)
             | Enemy::SpiralEnemy(ref mut base) => base,
+            Enemy::ShieldedBoss(ref mut boss) => &mut boss.base,
         }
     }
 
@@ -312,12 +330,20 @@ impl Enemy {
                 base.0.health -= val;
                 console_log!("damaged: {}", base.0.health);
             }
+            Enemy::ShieldedBoss(ref mut boss) => {
+                if boss.shield_health < 16 {
+                    boss.base.0.health -= val
+                } else {
+                    boss.shield_health -= val
+                }
+            }
         }
     }
 
     pub fn predicted_damage(&self) -> i32 {
         match self {
             Enemy::Enemy1(base) | Enemy::Boss(base) | Enemy::SpiralEnemy(base) => base.1,
+            Enemy::ShieldedBoss(boss) => boss.base.1,
         }
     }
 
@@ -395,6 +421,12 @@ impl Enemy {
 
         match self {
             Enemy::Enemy1(ref mut base) | Enemy::Boss(ref mut base) => base.0.animate(),
+            Enemy::ShieldedBoss(ref mut boss) => {
+                if boss.shield_health < 64 && state.time % 8 == 0 {
+                    boss.shield_health += 1;
+                }
+                boss.base.0.animate()
+            }
             Enemy::SpiralEnemy(ref mut base) => {
                 base.0.rotation -= std::f32::consts::PI * 0.01;
                 base.0.animate()
@@ -402,20 +434,29 @@ impl Enemy {
         }
     }
 
-    pub fn draw(&self, state: &ShooterState, context: &GL, assets: &Assets) {
+    pub fn draw(&self, _state: &ShooterState, gl: &GL, assets: &Assets) {
         self.get_base().draw_tex(
             assets,
-            context,
+            gl,
             match self {
                 Enemy::Enemy1(_) => &assets.enemy_tex,
-                Enemy::Boss(_) => &assets.boss_tex,
+                Enemy::Boss(_) | Enemy::ShieldedBoss(_) => &assets.boss_tex,
                 Enemy::SpiralEnemy(_) => &assets.spiral_enemy_tex,
             },
             Some(match self {
                 Enemy::Enemy1(_) => ENEMY_SIZE,
-                Enemy::Boss(_) | Enemy::SpiralEnemy(_) => BOSS_SIZE,
+                Enemy::Boss(_) | Enemy::ShieldedBoss(_) | Enemy::SpiralEnemy(_) => BOSS_SIZE,
             }),
         );
+
+        if let Enemy::ShieldedBoss(boss) = self {
+            self.get_base().draw_tex(
+                assets,
+                gl,
+                &assets.shield_tex,
+                Some(boss.shield_health as f64),
+            );
+        }
     }
 
     pub fn test_hit(&self, rect: [f64; 4]) -> bool {
@@ -424,7 +465,11 @@ impl Enemy {
     }
 
     pub fn get_bb(&self) -> [f64; 4] {
-        let size = ENEMY_SIZE;
+        let size = if let Enemy::ShieldedBoss(boss) = self {
+            boss.shield_health as f64
+        } else {
+            ENEMY_SIZE
+        };
         let e = self.get_base();
         [
             e.pos[0] - size,
@@ -436,7 +481,7 @@ impl Enemy {
 
     pub fn is_boss(&self) -> bool {
         match self {
-            Enemy::Boss(_) => true,
+            Enemy::Boss(_) | Enemy::ShieldedBoss(_) => true,
             _ => false,
         }
     }

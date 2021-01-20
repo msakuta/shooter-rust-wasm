@@ -5,6 +5,7 @@ import ebullet from "../assets/ebullet.png";
 import phaseBullet from "../assets/phase-bullet.png";
 import spiralBullet from "../assets/spiral-bullet.png";
 import boss from "../assets/boss.png";
+import shield from "../assets/shield.png";
 import spiralEnemy from "../assets/spiral-enemy.png";
 import missile from "../assets/missile.png";
 import explode from "../assets/explode.png";
@@ -76,6 +77,7 @@ rust
       ["phaseBullet", phaseBullet],
       ["spiralBullet", spiralBullet],
       ["boss", boss],
+      ["shield", shield],
       ["spiralEnemy", spiralEnemy],
       ["missile", missile],
       ["explode", explode],

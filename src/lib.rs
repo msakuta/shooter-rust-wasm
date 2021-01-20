@@ -497,7 +497,7 @@ impl ShooterState {
                         c
                     }
                 });
-            let gen_amount = 4;
+            let gen_amount = self.player.difficulty_level() * 2 + 4;
             while i < gen_amount {
                 let weights = [
                     if enemy_count < 128 {
@@ -984,6 +984,7 @@ impl ShooterState {
         set_text("frame", &format!("Frame: {}", self.time));
         set_text("score", &format!("Score: {}", self.player.score));
         set_text("kills", &format!("Kills: {}", self.player.kills));
+        set_text("difficulty", &format!("Difficulty Level: {}", self.player.difficulty_level()));
         set_text(
             "power",
             &format!(

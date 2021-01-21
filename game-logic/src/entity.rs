@@ -6,8 +6,9 @@ use crate::ShooterState;
 #[cfg(feature = "webgl")]
 use crate::{enable_buffer, vertex_buffer_data};
 use cgmath::{Matrix3, Matrix4, Rad, Vector2, Vector3};
-#[cfg(not(feature = "webgl"))]
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use piston_window::*;
+use std::ops::{Add, Mul};
 use std::rc::Rc;
 use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
 #[cfg(feature = "webgl")]
@@ -30,6 +31,24 @@ pub enum DeathReason {
     RangeOut,
     Killed,
     HitPlayer,
+}
+
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+// We cannot directly define custom operators on external types, so we wrap the matrix
+// int a tuple struct.
+pub struct Matrix<T>(pub vecmath::Matrix2x3<T>);
+
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+// This is such a silly way to operator overload to enable matrix multiplication with
+// operator *.
+impl<T> Mul for Matrix<T>
+where
+    T: Copy + Add<T, Output = T> + Mul<T, Output = T>,
+{
+    type Output = Self;
+    fn mul(self, o: Self) -> Self {
+        Matrix(vecmath::row_mat2x3_mul(self.0, o.0))
+    }
 }
 
 impl Entity {
@@ -313,6 +332,7 @@ pub struct Assets {
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 pub struct Assets {
     pub bg: G2dTexture,
+    pub player_tex: G2dTexture,
 }
 
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
@@ -343,6 +363,7 @@ impl Assets {
         (
             Self {
                 bg: load_texture("back2.jpg"),
+                player_tex: load_texture("player.png"),
             },
             glyphs,
         )

@@ -1,9 +1,12 @@
 use game_logic::{
     consts::*,
-    entity::{Assets, BulletBase, Enemy, Entity, Item, Player, Projectile, TempEntity, Weapon},
+    entity::{
+        Assets, BulletBase, Enemy, Entity, Item, Matrix, Player, Projectile, TempEntity, Weapon,
+    },
     ShooterState,
 };
 use piston_window::draw_state::Blend;
+use piston_window::math::{rotate_radians, scale, translate};
 use piston_window::*;
 use rand::prelude::*;
 use std::collections::HashMap;
@@ -54,16 +57,18 @@ fn main() {
         bullets.insert(ent.id, Projectile::Bullet(BulletBase(ent)));
     }
 
-    fn limit_viewport(viewport: &Viewport, ratio: f64, wwidth: u32, wheight: u32) -> Viewport{
-        let vp_ratio = (viewport.rect[2] - viewport.rect[0]) as f64 /
-            (viewport.rect[3] - viewport.rect[0]) as f64;
+    fn limit_viewport(viewport: &Viewport, ratio: f64, wwidth: u32, wheight: u32) -> Viewport {
+        let vp_ratio = (viewport.rect[2] - viewport.rect[0]) as f64
+            / (viewport.rect[3] - viewport.rect[0]) as f64;
         let mut newvp = *viewport;
         newvp.window_size[0] = (wwidth as f64 * (vp_ratio / ratio).max(1.)) as u32;
         newvp.window_size[1] = (wheight as f64 * (ratio / vp_ratio).max(1.)) as u32;
         #[cfg(debug)]
         for (vp, name) in [(viewport, "Old"), (&newvp, "New")].iter() {
-            println!("{} Context: ratio: {} vp.rect: {:?} vp.draw: {:?} vp.window: {:?}",
-                name, ratio, vp.rect, vp.draw_size, vp.window_size);
+            println!(
+                "{} Context: ratio: {} vp.rect: {:?} vp.draw: {:?} vp.window: {:?}",
+                name, ratio, vp.rect, vp.draw_size, vp.window_size
+            );
         }
         newvp
     }
@@ -76,14 +81,36 @@ fn main() {
                 if let Some(viewport) = context.viewport {
                     let (fwidth, fheight) = (WINDOW_WIDTH as f64, WINDOW_HEIGHT as f64);
                     let ratio = fwidth / fheight;
-    
-                    let wnd_context = Context::new_viewport(limit_viewport(&viewport, ratio, WINDOW_WIDTH, WINDOW_HEIGHT));
-    
+
+                    let wnd_context = Context::new_viewport(limit_viewport(
+                        &viewport,
+                        ratio,
+                        WINDOW_WIDTH,
+                        WINDOW_HEIGHT,
+                    ));
+
                     wnd_context.trans(-1., -1.);
-    
+
                     image(&assets.bg, wnd_context.transform, graphics);
-    
-                    context = Context::new_viewport(limit_viewport(&viewport, ratio, WINDOW_WIDTH, WINDOW_HEIGHT));
+
+                    context = Context::new_viewport(limit_viewport(
+                        &viewport,
+                        ratio,
+                        WINDOW_WIDTH,
+                        WINDOW_HEIGHT,
+                    ));
+                }
+
+                // Display player lives
+                for i in 0..player.lives {
+                    let width = assets.player_tex.get_width();
+                    let height = assets.player_tex.get_height();
+                    let transl = translate([
+                        (WINDOW_WIDTH - (i + 1) as u32 * width) as f64,
+                        (WINDOW_HEIGHT - height) as f64,
+                    ]);
+                    let transform = (Matrix(context.transform) * Matrix(transl)).0;
+                    image(&assets.player_tex, transform, graphics);
                 }
             });
         }

@@ -1,7 +1,8 @@
 use game_logic::{
     consts::*,
     entity::{
-        Assets, BulletBase, Enemy, Entity, Item, Matrix, Player, Projectile, TempEntity, Weapon,
+        Assets, BulletBase, DeathReason, Enemy, Entity, Item, Matrix, Player, Projectile,
+        TempEntity, Weapon,
     },
     ShooterState,
 };
@@ -47,21 +48,6 @@ fn main() {
 
     let mut weapon = Weapon::Bullet;
 
-    let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
-
-    let level = player.power_level() as i32;
-    player.cooldown += shoot_period;
-    for i in -1 - level..2 + level {
-        let speed = if let Weapon::Bullet = weapon {
-            BULLET_SPEED
-        } else {
-            MISSILE_SPEED
-        };
-        let mut ent = Entity::new(&mut id_gen, player.base.pos, [i as f64, -speed])
-            .rotation((i as f32).atan2(speed as f32));
-        bullets.insert(ent.id, Projectile::Bullet(BulletBase(ent)));
-    }
-
     fn limit_viewport(viewport: &Viewport, ratio: f64, wwidth: u32, wheight: u32) -> Viewport {
         let vp_ratio = (viewport.rect[2] - viewport.rect[0]) as f64
             / (viewport.rect[3] - viewport.rect[0]) as f64;
@@ -106,6 +92,96 @@ fn main() {
                     ));
                 }
 
+                // id_gen and rng must be passed as arguments since they are mutable
+                // borrows and needs to be released for each iteration.
+                // These variables are used in between multiple invocation of this closure.
+                let mut add_tent =
+                    |is_bullet, pos: &[f64; 2], id_gen: &mut u32, rng: &mut ThreadRng| {
+                        let mut ent = Entity::new(
+                            id_gen,
+                            [
+                                pos[0] + 4. * (rng.gen::<f64>() - 0.5),
+                                pos[1] + 4. * (rng.gen::<f64>() - 0.5),
+                            ],
+                            [0., 0.],
+                        )
+                        .rotation(rng.gen::<f32>() * 2. * std::f32::consts::PI);
+                        let (playback_rate, max_frames) = if is_bullet { (2, 8) } else { (4, 6) };
+                        ent = ent.health((max_frames * playback_rate) as i32);
+
+                        tent.push(TempEntity {
+                            base: ent,
+                            texture: if is_bullet {
+                                &assets.explode_tex
+                            } else {
+                                &assets.explode2_tex
+                            },
+                            max_frames,
+                            width: if is_bullet { 16 } else { 32 },
+                            playback_rate,
+                        })
+                    };
+
+                if !game_over && !paused {
+                    if key_up {
+                        player.move_up()
+                    }
+                    if key_down {
+                        player.move_down()
+                    }
+                    if key_left {
+                        player.move_left()
+                    }
+                    if key_right {
+                        player.move_right()
+                    }
+
+                    let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
+
+                    if Weapon::Bullet == weapon || Weapon::Missile == weapon {
+                        if key_shoot && player.cooldown == 0 {
+                            let level = player.power_level() as i32;
+                            player.cooldown += shoot_period;
+                            for i in -1 - level..2 + level {
+                                let speed = if let Weapon::Bullet = weapon {
+                                    BULLET_SPEED
+                                } else {
+                                    MISSILE_SPEED
+                                };
+                                let mut ent =
+                                    Entity::new(&mut id_gen, player.base.pos, [i as f64, -speed])
+                                        .rotation((i as f32).atan2(speed as f32));
+                                if let Weapon::Bullet = weapon {
+                                    shots_bullet += 1;
+                                    ent = ent.blend(Blend::Add);
+                                    bullets.insert(ent.id, Projectile::Bullet(BulletBase(ent)));
+                                } else {
+                                    shots_missile += 1;
+                                    ent = ent.health(5);
+                                    bullets.insert(
+                                        ent.id,
+                                        Projectile::Missile {
+                                            base: BulletBase(ent),
+                                            target: 0,
+                                            trail: vec![],
+                                        },
+                                    );
+                                }
+                            }
+                            if player.cooldown < 1 {
+                                player.cooldown = 0;
+                            } else {
+                                player.cooldown -= 1;
+                            }
+                        }
+                    }
+                    if player.cooldown < 1 {
+                        player.cooldown = 0;
+                    } else {
+                        player.cooldown -= 1;
+                    }
+                }
+
                 let wave_period = 1024;
 
                 if !game_over {
@@ -115,6 +191,65 @@ fn main() {
                             .draw_tex(&context, graphics, &assets.player_tex, None);
                     }
                 }
+
+                if !paused {
+                    time += 1;
+                }
+                disptime += 1;
+
+                let mut bullets_to_delete: Vec<u32> = Vec::new();
+                for (i, b) in &mut bullets.iter_mut() {
+                    if !paused {
+                        if let Some(death_reason) = b.animate_bullet(&mut enemies, &mut player) {
+                            bullets_to_delete.push(*i);
+
+                            let base = b.get_base();
+
+                            match death_reason {
+                                DeathReason::Killed | DeathReason::HitPlayer => add_tent(
+                                    if let Projectile::Missile { .. } = b {
+                                        false
+                                    } else {
+                                        true
+                                    },
+                                    &base.0.pos,
+                                    &mut id_gen,
+                                    &mut rng,
+                                ),
+                                _ => {}
+                            }
+
+                            if let DeathReason::HitPlayer = death_reason {
+                                if player.invtime == 0 && !game_over && 0 < player.lives {
+                                    player.lives -= 1;
+                                    if player.lives == 0 {
+                                        game_over = true;
+                                    } else {
+                                        player.invtime = PLAYER_INVINCIBLE_TIME;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    b.draw(&context, graphics, &assets);
+                }
+
+                for i in bullets_to_delete.iter() {
+                    if let Some(b) = bullets.remove(i) {
+                        println!(
+                            "Deleted {} id={}, {} / {}",
+                            b.get_type(),
+                            b.get_base().0.id,
+                            *i,
+                            bullets.len()
+                        );
+                    } else {
+                        debug_assert!(false, "All keys must exist in bullets");
+                    }
+                }
+
+                bullets_to_delete.clear();
 
                 // Right side bar
                 rectangle(

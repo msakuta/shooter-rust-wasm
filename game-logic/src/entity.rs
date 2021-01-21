@@ -77,6 +77,12 @@ impl Entity {
         self
     }
 
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub fn blend(mut self, blend: Blend) -> Self {
+        self.blend = Some(blend);
+        self
+    }
+
     pub fn rotation(mut self, rotation: f32) -> Self {
         self.rotation = rotation;
         self
@@ -374,6 +380,13 @@ pub struct Assets {
     pub bg: G2dTexture,
     pub weapons_tex: G2dTexture,
     pub player_tex: G2dTexture,
+    pub ebullet_tex: G2dTexture,
+    pub phase_bullet_tex: G2dTexture,
+    pub spiral_bullet_tex: G2dTexture,
+    pub bullet_tex: G2dTexture,
+    pub missile_tex: G2dTexture,
+    pub explode_tex: G2dTexture,
+    pub explode2_tex: G2dTexture,
     pub sphere_tex: G2dTexture,
 }
 
@@ -407,6 +420,13 @@ impl Assets {
                 bg: load_texture("back2.jpg"),
                 weapons_tex: load_texture("weapons.png"),
                 player_tex: load_texture("player.png"),
+                ebullet_tex: load_texture("ebullet.png"),
+                phase_bullet_tex: load_texture("phase-bullet.png"),
+                spiral_bullet_tex: load_texture("spiral-bullet.png"),
+                bullet_tex: load_texture("bullet.png"),
+                missile_tex: load_texture("missile.png"),
+                explode_tex: load_texture("explode.png"),
+                explode2_tex: load_texture("explode2.png"),
                 sphere_tex: load_texture("sphere.png"),
             },
             glyphs,
@@ -664,6 +684,15 @@ impl Projectile {
         self.get_base().0.id
     }
 
+    pub fn get_type(&self) -> &str {
+        match &self {
+            &Projectile::Bullet(_) | &Projectile::EnemyBullet(_) => "Bullet",
+            &Projectile::PhaseBullet { .. } => "PhaseBullet",
+            &Projectile::SpiralBullet { .. } => "SpiralBullet",
+            &Projectile::Missile { .. } => "Missile",
+        }
+    }
+
     fn animate_player_bullet(
         mut base: &mut BulletBase,
         enemies: &mut Vec<Enemy>,
@@ -881,6 +910,42 @@ impl Projectile {
             Some(BULLET_SIZE),
         );
     }
+
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub fn draw(&self, c: &Context, g: &mut G2d, assets: &Assets) {
+        if let Projectile::Missile {
+            base: _,
+            target: _,
+            trail,
+        } = self
+        {
+            let mut iter = trail.iter().enumerate();
+            if let Some(mut prev) = iter.next() {
+                for e in iter {
+                    line(
+                        [0.75, 0.75, 0.75, e.0 as f32 / MISSILE_TRAIL_LENGTH as f32],
+                        e.0 as f64 / MISSILE_TRAIL_LENGTH as f64,
+                        [prev.1[0], prev.1[1], e.1[0], e.1[1]],
+                        c.transform,
+                        g,
+                    );
+                    prev = e;
+                }
+            }
+        }
+        self.get_base().0.draw_tex(
+            c,
+            g,
+            match self {
+                Projectile::Bullet(_) => &assets.bullet_tex,
+                Projectile::EnemyBullet(_) => &assets.ebullet_tex,
+                Projectile::PhaseBullet { .. } => &assets.phase_bullet_tex,
+                Projectile::SpiralBullet { .. } => &assets.spiral_bullet_tex,
+                Projectile::Missile { .. } => &assets.missile_tex,
+            },
+            None,
+        );
+    }
 }
 
 pub enum Item {
@@ -925,9 +990,9 @@ impl Item {
     }
 }
 
+#[cfg(feature = "webgl")]
 pub struct TempEntity {
     pub base: Entity,
-    #[cfg(feature = "webgl")]
     pub texture: Rc<WebGlTexture>,
     pub max_frames: u32,
     pub width: u32,
@@ -936,6 +1001,16 @@ pub struct TempEntity {
     pub size: f64,
 }
 
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+pub struct TempEntity<'a> {
+    pub base: Entity,
+    pub texture: &'a G2dTexture,
+    pub max_frames: u32,
+    pub width: u32,
+    pub playback_rate: u32,
+}
+
+#[cfg(feature = "webgl")]
 impl TempEntity {
     #[allow(dead_code)]
     pub fn max_frames(mut self, max_frames: u32) -> Self {
@@ -947,7 +1022,6 @@ impl TempEntity {
         self.base.animate()
     }
 
-    #[cfg(feature = "webgl")]
     pub fn draw_temp(&self, context: &GL, assets: &Assets) {
         let shader = assets.sprite_shader.as_ref().unwrap();
         let pos = &self.base.pos;
@@ -975,5 +1049,46 @@ impl TempEntity {
         );
 
         context.draw_arrays(GL::TRIANGLE_FAN, 0, 4);
+    }
+}
+
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+impl<'a> TempEntity<'a> {
+    #[allow(dead_code)]
+    pub fn max_frames(mut self, max_frames: u32) -> Self {
+        self.max_frames = max_frames;
+        self
+    }
+    pub fn animate_temp(&mut self) -> Option<DeathReason> {
+        self.base.health -= 1;
+        self.base.animate()
+    }
+
+    pub fn draw_temp(&self, context: &Context, g: &mut G2d) {
+        let pos = &self.base.pos;
+        let tex2 = self.texture;
+        let centerize = translate([-(16. / 2.), -(tex2.get_height() as f64 / 2.)]);
+        let rotmat = rotate_radians(self.base.rotation as f64);
+        let translate = translate(*pos);
+        let frame = self.max_frames - (self.base.health as u32 / self.playback_rate) as u32;
+        let draw_state = if let Some(blend_mode) = self.base.blend {
+            context.draw_state.blend(blend_mode)
+        } else {
+            context.draw_state
+        };
+        let image = Image::new()
+            .rect([0f64, 0f64, self.width as f64, tex2.get_height() as f64])
+            .src_rect([
+                frame as f64 * self.width as f64,
+                0.,
+                self.width as f64,
+                tex2.get_height() as f64,
+            ]);
+        image.draw(
+            tex2,
+            &draw_state,
+            (Matrix(context.transform) * Matrix(translate) * Matrix(rotmat) * Matrix(centerize)).0,
+            g,
+        );
     }
 }

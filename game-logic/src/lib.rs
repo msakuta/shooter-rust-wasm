@@ -87,6 +87,7 @@ pub struct ShooterState {
     pub enemies: Vec<Enemy>,
     pub items: Vec<Item>,
     pub bullets: HashMap<u32, Projectile>,
+    #[cfg(feature = "webgl")]
     pub tent: Vec<TempEntity>,
     pub rng: Xor128,
     pub shots_bullet: usize,
@@ -109,6 +110,7 @@ impl ShooterState {
         self.items.clear();
         self.enemies.clear();
         self.bullets.clear();
+        #[cfg(feature = "webgl")]
         self.tent.clear();
         self.time = 0;
         self.id_gen = 0;

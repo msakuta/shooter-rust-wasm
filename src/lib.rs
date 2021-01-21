@@ -82,114 +82,13 @@ pub struct ShooterState(game_logic::ShooterState);
 impl ShooterState {
     #[wasm_bindgen(constructor)]
     pub fn new(image_assets: js_sys::Array) -> Result<ShooterState, JsValue> {
-        let side_panel = document().get_element_by_id("sidePanel").unwrap();
-        let player_live_icons = (0..3)
-            .map(|_| {
-                let lives_icon = document().create_element("img")?;
-                lives_icon.set_attribute(
-                    "src",
-                    &js_sys::Array::from(
-                        &image_assets
-                            .iter()
-                            .find(|value| {
-                                let array = js_sys::Array::from(value);
-                                array.iter().next() == Some(JsValue::from_str("player"))
-                            })
-                            .unwrap(),
-                    )
-                    .to_vec()
-                    .get(1)
-                    .ok_or_else(|| JsValue::from_str("Couldn't find texture"))?
-                    .as_string()
-                    .unwrap(),
-                )?;
-                side_panel.append_child(&lives_icon)?;
-                Ok(lives_icon)
-            })
-            .collect::<Result<Vec<Element>, JsValue>>()?;
-
         let context = get_context();
 
-        let load_texture_local = |path| -> Result<Rc<WebGlTexture>, JsValue> {
-            if let Some(value) = image_assets.iter().find(|value| {
-                let array = js_sys::Array::from(value);
-                array.iter().next() == Some(JsValue::from_str(path))
-            }) {
-                let array = js_sys::Array::from(&value).to_vec();
-                load_texture(
-                    &context,
-                    &array
-                        .get(1)
-                        .ok_or_else(|| JsValue::from_str("Couldn't find texture"))?
-                        .as_string()
-                        .ok_or_else(|| {
-                            JsValue::from_str(&format!(
-                                "Couldn't convert value to String: {:?}",
-                                path
-                            ))
-                        })?,
-                )
-            } else {
-                Err(JsValue::from_str("Couldn't find texture"))
-            }
-        };
-
-        let mut id_gen = 0;
-        let mut player = Player::new(Entity::new(
-            &mut id_gen,
-            [FWIDTH / 2., FHEIGHT / 2.],
-            [0., 0.],
-        ));
-        player.reset();
-
-        Ok(Self(game_logic::ShooterState {
-            time: 0,
-            disptime: 0,
-            paused: false,
-            game_over: false,
-            id_gen,
-            player,
-            enemies: vec![],
-            items: vec![],
-            bullets: HashMap::new(),
-            tent: vec![],
-            rng: Xor128::new(3232132),
-            shots_bullet: 0,
-            shots_missile: 0,
-            shoot_pressed: false,
-            left_pressed: false,
-            right_pressed: false,
-            up_pressed: false,
-            down_pressed: false,
-            player_live_icons,
-            assets: Assets {
-                world_transform: Matrix4::from_translation(Vector3::new(-1., 1., 0.))
-                    * &Matrix4::from_nonuniform_scale(2. / FWIDTH, -2. / FHEIGHT, 1.),
-                enemy_tex: load_texture_local("enemy")?,
-                boss_tex: load_texture_local("boss")?,
-                shield_tex: load_texture_local("shield")?,
-                spiral_enemy_tex: load_texture_local("spiralEnemy")?,
-                player_texture: load_texture_local("player")?,
-                bullet_texture: load_texture_local("bullet")?,
-                enemy_bullet_texture: load_texture_local("ebullet")?,
-                phase_bullet_tex: load_texture_local("phaseBullet")?,
-                spiral_bullet_tex: load_texture_local("spiralBullet")?,
-                missile_tex: load_texture_local("missile")?,
-                explode_tex: load_texture_local("explode")?,
-                explode2_tex: load_texture_local("explode2")?,
-                trail_tex: load_texture_local("trail")?,
-                beam_tex: load_texture_local("beam")?,
-                back_tex: load_texture_local("back")?,
-                power_tex: load_texture_local("power")?,
-                power2_tex: load_texture_local("power2")?,
-                sphere_tex: load_texture_local("sphere")?,
-                weapons_tex: load_texture_local("weapons")?,
-                sprite_shader: None,
-                trail_shader: None,
-                rect_buffer: None,
-                trail_buffer: None,
-            },
-        }))
+        Ok(Self(game_logic::ShooterState::new(Some(Assets::new(
+            &document(),
+            &context,
+            image_assets,
+        )?))))
     }
 
     pub fn key_down(&mut self, event: web_sys::KeyboardEvent) -> Result<JsString, JsValue> {
@@ -273,7 +172,7 @@ impl ShooterState {
     pub fn restart(&mut self) -> Result<(), JsValue> {
         self.restart();
 
-        for icon in &self.0.player_live_icons {
+        for icon in &self.0.assets.player_live_icons {
             icon.set_class_name("");
         }
         let game_over_element = document()
@@ -930,7 +829,7 @@ impl ShooterState {
                                 && 0 < self.0.player.lives
                             {
                                 self.0.player.lives -= 1;
-                                self.0.player_live_icons[self.0.player.lives as usize]
+                                self.0.assets.player_live_icons[self.0.player.lives as usize]
                                     .set_class_name("hidden");
                                 if self.0.player.lives == 0 {
                                     self.0.game_over = true;
@@ -1054,90 +953,6 @@ pub fn link_program(
             .get_program_info_log(&program)
             .unwrap_or_else(|| String::from("Unknown error creating program object")))
     }
-}
-
-//
-// Initialize a texture and load an image.
-// When the image finished loading copy it into the texture.
-//
-fn load_texture(gl: &GL, url: &str) -> Result<Rc<WebGlTexture>, JsValue> {
-    let texture = Rc::new(gl.create_texture().unwrap());
-    gl.bind_texture(GL::TEXTURE_2D, Some(&*texture));
-
-    // Because images have to be downloaded over the internet
-    // they might take a moment until they are ready.
-    // Until then put a single pixel in the texture so we can
-    // use it immediately. When the image has finished downloading
-    // we'll update the texture with the contents of the image.
-    let level = 0;
-    let internal_format = GL::RGBA as i32;
-    let width = 1;
-    let height = 1;
-    let border = 0;
-    let src_format = GL::RGBA;
-    let src_type = GL::UNSIGNED_BYTE;
-    let pixel = [0u8, 255, 255, 255];
-    gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
-        GL::TEXTURE_2D,
-        level,
-        internal_format,
-        width,
-        height,
-        border,
-        src_format,
-        src_type,
-        Some(&pixel),
-    )
-    .unwrap();
-    gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_S, GL::REPEAT as i32);
-    gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::REPEAT as i32);
-    gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::LINEAR as i32);
-
-    let image = Rc::new(HtmlImageElement::new().unwrap());
-    let url_str = url.to_owned();
-    let image_clone = image.clone();
-    let texture_clone = texture.clone();
-    let callback = Closure::wrap(Box::new(move || {
-        console_log!("loaded image: {}", url_str);
-        // web_sys::console::log_1(Date::new_0().to_locale_string("en-GB", &JsValue::undefined()));
-
-        let gl = get_context();
-
-        gl.bind_texture(GL::TEXTURE_2D, Some(&*texture_clone));
-        gl.tex_image_2d_with_u32_and_u32_and_image(
-            GL::TEXTURE_2D,
-            level,
-            internal_format,
-            src_format,
-            src_type,
-            &image_clone,
-        )
-        .unwrap();
-
-        // WebGL1 has different requirements for power of 2 images
-        // vs non power of 2 images so check if the image is a
-        // power of 2 in both dimensions.
-        if is_power_of_2(image_clone.width()) && is_power_of_2(image_clone.height()) {
-            // Yes, it's a power of 2. Generate mips.
-            gl.generate_mipmap(GL::TEXTURE_2D);
-        } else {
-            // No, it's not a power of 2. Turn off mips and set
-            // wrapping to clamp to edge
-            gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_S, GL::CLAMP_TO_EDGE as i32);
-            gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::CLAMP_TO_EDGE as i32);
-            gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::LINEAR as i32);
-        }
-    }) as Box<dyn FnMut()>);
-    image.set_onload(Some(callback.as_ref().unchecked_ref()));
-    image.set_src(url);
-
-    callback.forget();
-
-    Ok(texture)
-}
-
-fn is_power_of_2(value: u32) -> bool {
-    (value & (value - 1)) == 0
 }
 
 fn vertex_buffer_data(context: &GL, vertices: &[f32]) -> Result<(), JsValue> {

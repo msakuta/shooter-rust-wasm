@@ -2,10 +2,12 @@ use core::f64;
 
 use crate::consts::*;
 use crate::xor128::Xor128;
+use crate::ShooterState;
 #[cfg(feature = "webgl")]
 use crate::{enable_buffer, vertex_buffer_data};
-use crate::ShooterState;
 use cgmath::{Matrix3, Matrix4, Rad, Vector2, Vector3};
+#[cfg(not(feature = "webgl"))]
+use piston_window::*;
 use std::rc::Rc;
 use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
 #[cfg(feature = "webgl")]
@@ -308,8 +310,44 @@ pub struct Assets {
     pub rect_buffer: Option<WebGlBuffer>,
 }
 
-#[cfg(not(feature = "webgl"))]
-pub struct Assets{}
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+pub struct Assets {
+    pub bg: G2dTexture,
+}
+
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+impl Assets {
+    pub fn new(window: &mut PistonWindow) -> (Self, Glyphs) {
+        let mut exe_folder = std::env::current_exe().unwrap();
+        exe_folder.pop();
+        println!("exe: {:?}", exe_folder);
+        let assets_loader = find_folder::Search::KidsThenParents(1, 3)
+            .of(exe_folder)
+            .for_folder("assets")
+            .unwrap();
+
+        let ref font = assets_loader.join("FiraSans-Regular.ttf");
+        let factory = window.factory.clone();
+        let glyphs = Glyphs::new(font, factory, TextureSettings::new()).unwrap();
+
+        let mut load_texture = |name| {
+            Texture::from_path(
+                &mut window.factory,
+                &assets_loader.join(name),
+                Flip::None,
+                &TextureSettings::new(),
+            )
+            .unwrap()
+        };
+
+        (
+            Self {
+                bg: load_texture("back2.jpg"),
+            },
+            glyphs,
+        )
+    }
+}
 
 impl Enemy {
     pub fn get_base(&self) -> &Entity {

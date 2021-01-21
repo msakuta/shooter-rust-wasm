@@ -19,8 +19,7 @@ fn main() {
             .build()
             .unwrap();
 
-    // let (assets, mut glyphs) = Assets::new(&mut window);
-    let assets = Assets {};
+    let (assets, mut glyphs) = Assets::new(&mut window);
 
     let mut id_gen = 0;
     let mut player = Player::new(Entity::new(&mut id_gen, [240., 400.], [0., 0.]));
@@ -55,5 +54,38 @@ fn main() {
         bullets.insert(ent.id, Projectile::Bullet(BulletBase(ent)));
     }
 
-    while let Some(event) = window.next() {}
+    fn limit_viewport(viewport: &Viewport, ratio: f64, wwidth: u32, wheight: u32) -> Viewport{
+        let vp_ratio = (viewport.rect[2] - viewport.rect[0]) as f64 /
+            (viewport.rect[3] - viewport.rect[0]) as f64;
+        let mut newvp = *viewport;
+        newvp.window_size[0] = (wwidth as f64 * (vp_ratio / ratio).max(1.)) as u32;
+        newvp.window_size[1] = (wheight as f64 * (ratio / vp_ratio).max(1.)) as u32;
+        #[cfg(debug)]
+        for (vp, name) in [(viewport, "Old"), (&newvp, "New")].iter() {
+            println!("{} Context: ratio: {} vp.rect: {:?} vp.draw: {:?} vp.window: {:?}",
+                name, ratio, vp.rect, vp.draw_size, vp.window_size);
+        }
+        newvp
+    }
+
+    while let Some(event) = window.next() {
+        if let Some(_) = event.render_args() {
+            window.draw_2d(&event, |mut context, graphics| {
+                clear([0.0, 0., 0., 1.], graphics);
+
+                if let Some(viewport) = context.viewport {
+                    let (fwidth, fheight) = (WINDOW_WIDTH as f64, WINDOW_HEIGHT as f64);
+                    let ratio = fwidth / fheight;
+    
+                    let wnd_context = Context::new_viewport(limit_viewport(&viewport, ratio, WINDOW_WIDTH, WINDOW_HEIGHT));
+    
+                    wnd_context.trans(-1., -1.);
+    
+                    image(&assets.bg, wnd_context.transform, graphics);
+    
+                    context = Context::new_viewport(limit_viewport(&viewport, ratio, WINDOW_WIDTH, WINDOW_HEIGHT));
+                }
+            });
+        }
+    }
 }

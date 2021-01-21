@@ -1,13 +1,13 @@
 #[cfg(feature = "webgl")]
 use js_sys::Atomics::xor;
+use std::{collections::HashMap, vec};
+#[cfg(feature = "webgl")]
+use wasm_bindgen::{prelude::*, JsCast};
 #[cfg(feature = "webgl")]
 use web_sys::{
     Element, HtmlImageElement, WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlShader,
     WebGlTexture,
 };
-#[cfg(feature = "webgl")]
-use wasm_bindgen::{prelude::*, JsCast};
-use std::{collections::HashMap, vec};
 
 #[cfg(feature = "webgl")]
 macro_rules! console_log {
@@ -56,12 +56,12 @@ pub mod entity;
 pub mod xor128;
 
 use crate::consts::*;
+#[cfg(feature = "webgl")]
+use crate::entity::ShaderBundle;
 use crate::entity::{
     Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Player, Projectile,
     ShieldedBoss, TempEntity, Weapon,
 };
-#[cfg(feature = "webgl")]
-use crate::entity::ShaderBundle;
 use xor128::Xor128;
 
 #[cfg(feature = "webgl")]

@@ -5,7 +5,7 @@ authors = ["msakuta <masahiro.sakuta@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-game-logic = { path = "../game-logic" }
+game-logic = { path = "../game-logic", features = [ "piston" ] }
 piston_window = "0.81.0"
 find_folder = "0.3.0"
 piston2d-sprite = "0.50.0"

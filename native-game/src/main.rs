@@ -422,6 +422,21 @@ fn main() {
 
                 bullets_to_delete.clear();
 
+                for (i, e) in &mut ((&mut tent).iter_mut().enumerate()) {
+                    if !paused {
+                        if let Some(_) = e.animate_temp() {
+                            to_delete.push(i);
+                            continue;
+                        }
+                    }
+                    e.draw_temp(&context, graphics);
+                }
+
+                for i in to_delete.iter().rev() {
+                    tent.remove(*i);
+                    //println!("Deleted tent {} / {}", *i, bullets.len());
+                }
+
                 // Right side bar
                 rectangle(
                     [0.20, 0.20, 0.4, 1.],

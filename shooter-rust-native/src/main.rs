@@ -319,6 +319,36 @@ fn main() {
                     }
                 }
 
+                if !game_over {
+                    if player.invtime == 0 || disptime % 2 == 0 {
+                        player
+                            .base
+                            .draw_tex(&context, graphics, &assets.player_tex, None);
+                    }
+                }
+
+                if !paused {
+                    time += 1;
+                }
+                disptime += 1;
+
+                let mut to_delete: Vec<usize> = Vec::new();
+
+                for (i, e) in &mut ((&mut items).iter_mut().enumerate()) {
+                    if !paused {
+                        if let Some(_) = e.animate(&mut player) {
+                            to_delete.push(i);
+                            continue;
+                        }
+                    }
+                    e.draw(&context, graphics, &assets);
+                }
+
+                for i in to_delete.iter().rev() {
+                    let dead = items.remove(*i);
+                    println!("Deleted Item id={}: {} / {}", dead.get_base().id, *i, items.len());
+                }
+
                 let mut to_delete: Vec<usize> = Vec::new();
                 for (i, enemy) in &mut ((&mut enemies).iter_mut().enumerate()) {
                     if !paused {
@@ -352,21 +382,6 @@ fn main() {
                         Enemy::SpiralEnemy(_) => "SpiralEnemy",
                     }, dead.get_id(), *i, enemies.len());
                 }
-
-                to_delete.clear();
-
-                if !game_over {
-                    if player.invtime == 0 || disptime % 2 == 0 {
-                        player
-                            .base
-                            .draw_tex(&context, graphics, &assets.player_tex, None);
-                    }
-                }
-
-                if !paused {
-                    time += 1;
-                }
-                disptime += 1;
 
                 let mut bullets_to_delete: Vec<u32> = Vec::new();
                 for (i, b) in &mut bullets.iter_mut() {
@@ -422,6 +437,7 @@ fn main() {
 
                 bullets_to_delete.clear();
 
+                to_delete.clear();
                 for (i, e) in &mut ((&mut tent).iter_mut().enumerate()) {
                     if !paused {
                         if let Some(_) = e.animate_temp() {
@@ -553,7 +569,6 @@ fn main() {
                 );
 
                 // Display weapon selection
-                use piston_window::math::translate;
                 let centerize = translate([
                     -((assets.sphere_tex.get_width() * weapon_set.len() as u32) as f64 / 2.),
                     -(assets.sphere_tex.get_height() as f64 / 2.),

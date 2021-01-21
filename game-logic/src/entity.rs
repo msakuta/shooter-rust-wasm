@@ -486,6 +486,8 @@ pub struct Assets {
     pub explode_tex: G2dTexture,
     pub explode2_tex: G2dTexture,
     pub sphere_tex: G2dTexture,
+    pub power_tex: G2dTexture,
+    pub power2_tex: G2dTexture,
 }
 
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
@@ -530,6 +532,8 @@ impl Assets {
                 explode_tex: load_texture("explode.png"),
                 explode2_tex: load_texture("explode2.png"),
                 sphere_tex: load_texture("sphere.png"),
+                power_tex: load_texture("power.png"),
+                power2_tex: load_texture("power2.png"),
             },
             glyphs,
         )
@@ -1115,6 +1119,14 @@ impl Item {
             Item::PowerUp10(item) => {
                 item.draw_tex(&assets, gl, &assets.power2_tex, Some(ITEM2_SIZE))
             }
+        }
+    }
+
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub fn draw(&self, c: &Context, g: &mut G2d, assets: &Assets){
+        match self {
+            Item::PowerUp(item) => item.draw_tex(c, g, &assets.power_tex, None),
+            Item::PowerUp10(item) => item.draw_tex(c, g, &assets.power2_tex, None)
         }
     }
 

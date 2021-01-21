@@ -7,7 +7,11 @@ use crate::ShooterState;
 use crate::{enable_buffer, vertex_buffer_data};
 use cgmath::{Matrix3, Matrix4, Rad, Vector2, Vector3};
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
-use piston_window::*;
+use piston_window::{
+    draw_state::Blend,
+    math::{rotate_radians, scale, translate},
+    *,
+};
 use std::ops::{Add, Mul};
 use std::rc::Rc;
 use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
@@ -24,6 +28,8 @@ pub struct Entity {
     pub health: i32,
     pub rotation: f32,
     pub angular_velocity: f32,
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub blend: Option<Blend>,
 }
 
 #[derive(Debug)]
@@ -61,6 +67,8 @@ impl Entity {
             health: 1,
             rotation: 0.,
             angular_velocity: 0.,
+            #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+            blend: None,
         }
     }
 
@@ -119,6 +127,38 @@ impl Entity {
         );
 
         context.draw_arrays(GL::TRIANGLE_FAN, 0, 4);
+    }
+
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub fn draw_tex(
+        &self,
+        context: &Context,
+        g: &mut G2d,
+        texture: &G2dTexture,
+        scale: Option<f64>,
+    ) {
+        let pos = &self.pos;
+        let tex2 = texture;
+        let scale_factor = scale.unwrap_or(1.);
+        let (width, height) = (
+            scale_factor * tex2.get_width() as f64,
+            scale_factor * tex2.get_height() as f64,
+        );
+        let centerize = translate([-(width / 2.), -(height / 2.)]);
+        let rotmat = rotate_radians(self.rotation as f64);
+        let translate = translate(*pos);
+        let draw_state = if let Some(blend_mode) = self.blend {
+            context.draw_state.blend(blend_mode)
+        } else {
+            context.draw_state
+        };
+        let image = Image::new().rect([0., 0., width, height]);
+        image.draw(
+            tex2,
+            &draw_state,
+            (Matrix(context.transform) * Matrix(translate) * Matrix(rotmat) * Matrix(centerize)).0,
+            g,
+        );
     }
 
     pub fn hits_player(&self, player: &Self) -> Option<DeathReason> {

@@ -42,6 +42,9 @@ fn main() {
 
     let [mut shots_bullet, mut shots_missile] = [0, 0];
 
+    let [mut key_up, mut key_down, mut key_left, mut key_right, mut key_shoot, mut key_change, mut key_pause] =
+        [false; 7];
+
     let mut weapon = Weapon::Bullet;
 
     let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
@@ -104,6 +107,14 @@ fn main() {
                 }
 
                 let wave_period = 1024;
+
+                if !game_over {
+                    if player.invtime == 0 || disptime % 2 == 0 {
+                        player
+                            .base
+                            .draw_tex(&context, graphics, &assets.player_tex, None);
+                    }
+                }
 
                 // Right side bar
                 rectangle(
@@ -271,6 +282,96 @@ fn main() {
                     image(&assets.player_tex, transform, graphics);
                 }
             });
+        } else {
+            let mut toggle_key = |opt: Option<Button>, tf: bool| {
+                if let Some(Button::Keyboard(key)) = opt {
+                    match key {
+                        Key::Up | Key::W => key_up = tf,
+                        Key::Down | Key::S => key_down = tf,
+                        Key::Left | Key::A => key_left = tf,
+                        Key::Right | Key::D => key_right = tf,
+                        Key::C => key_shoot = tf,
+                        Key::Z | Key::X => {
+                            if !key_change && tf && !game_over {
+                                use Weapon::*;
+                                let weapon_set = [
+                                    ("Bullet", Bullet),
+                                    ("Light", Light),
+                                    ("Missile", Missile),
+                                    ("Lightning", Lightning),
+                                ];
+                                let (name, next_weapon) = match weapon {
+                                    Bullet => {
+                                        if key == Key::X {
+                                            &weapon_set[1]
+                                        } else {
+                                            &weapon_set[3]
+                                        }
+                                    }
+                                    Light => {
+                                        if key == Key::X {
+                                            &weapon_set[2]
+                                        } else {
+                                            &weapon_set[0]
+                                        }
+                                    }
+                                    Missile => {
+                                        if key == Key::X {
+                                            &weapon_set[3]
+                                        } else {
+                                            &weapon_set[1]
+                                        }
+                                    }
+                                    Lightning => {
+                                        if key == Key::X {
+                                            &weapon_set[0]
+                                        } else {
+                                            &weapon_set[2]
+                                        }
+                                    }
+                                };
+                                weapon = next_weapon.clone();
+                                println!("Weapon switched: {}", name);
+                            }
+                            key_change = tf;
+                        }
+                        Key::P => {
+                            if !key_pause && tf {
+                                paused = !paused;
+                            }
+                            key_pause = tf;
+                        }
+                        Key::Space => {
+                            if tf {
+                                items.clear();
+                                enemies.clear();
+                                bullets.clear();
+                                tent.clear();
+                                time = 0;
+                                id_gen = 0;
+                                player.reset();
+                                shots_bullet = 0;
+                                shots_missile = 0;
+                                paused = false;
+                                game_over = false;
+                            }
+                        }
+                        Key::G => {
+                            if cfg!(debug_assertions) && tf {
+                                player.score += 1000;
+                            }
+                        }
+                        Key::H => {
+                            if cfg!(debug_assertions) && tf {
+                                player.power += 16;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            };
+            toggle_key(event.press_args(), true);
+            toggle_key(event.release_args(), false);
         }
     }
 }

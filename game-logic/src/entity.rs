@@ -332,7 +332,9 @@ pub struct Assets {
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 pub struct Assets {
     pub bg: G2dTexture,
+    pub weapons_tex: G2dTexture,
     pub player_tex: G2dTexture,
+    pub sphere_tex: G2dTexture,
 }
 
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
@@ -363,7 +365,9 @@ impl Assets {
         (
             Self {
                 bg: load_texture("back2.jpg"),
+                weapons_tex: load_texture("weapons.png"),
                 player_tex: load_texture("player.png"),
+                sphere_tex: load_texture("sphere.png"),
             },
             glyphs,
         )

@@ -101,6 +101,83 @@ fn main() {
                     ));
                 }
 
+                let mut draw_text_pos = |s: &str, pos: [f64; 2], color: [f32; 4], size: u32| {
+                    text::Text::new_color(color, size)
+                        .draw(
+                            s,
+                            &mut glyphs,
+                            &context.draw_state,
+                            context.transform.trans(pos[0], pos[1]),
+                            graphics,
+                        )
+                        .unwrap_or_default();
+                };
+
+                let weapon_set = [
+                    (0, Weapon::Bullet, [1., 0.5, 0.]),
+                    (2, Weapon::Light, [1., 1., 1.]),
+                    (3, Weapon::Missile, [0., 1., 0.]),
+                    (4, Weapon::Lightning, [1., 1., 0.]),
+                ];
+
+                draw_text_pos(
+                    "Z",
+                    [
+                        ((WINDOW_WIDTH + WIDTH) / 2 - weapon_set.len() as u32 * 32 / 2 - 16) as f64,
+                        (WINDOW_HEIGHT * 3 / 4) as f64,
+                    ],
+                    [1.0, 1.0, 0.0, 1.0],
+                    14,
+                );
+                draw_text_pos(
+                    "X",
+                    [
+                        ((WINDOW_WIDTH + WIDTH) / 2 + weapon_set.len() as u32 * 32 / 2 + 6) as f64,
+                        (WINDOW_HEIGHT * 3 / 4) as f64,
+                    ],
+                    [1.0, 1.0, 0.0, 1.0],
+                    14,
+                );
+
+                // Display weapon selection
+                use piston_window::math::translate;
+                let centerize = translate([
+                    -((assets.sphere_tex.get_width() * weapon_set.len() as u32) as f64 / 2.),
+                    -(assets.sphere_tex.get_height() as f64 / 2.),
+                ]);
+                for (i, v) in weapon_set.iter().enumerate() {
+                    let sphere_image = if v.1 == weapon {
+                        Image::new_color([v.2[0], v.2[1], v.2[2], 1.])
+                    } else {
+                        Image::new_color([0.5 * v.2[0], 0.5 * v.2[1], 0.5 * v.2[2], 1.])
+                    };
+                    let transl = translate([
+                        ((WINDOW_WIDTH + WIDTH) / 2 + i as u32 * 32) as f64,
+                        (WINDOW_HEIGHT * 3 / 4) as f64,
+                    ]);
+                    let transform =
+                        (Matrix(context.transform) * Matrix(transl) * Matrix(centerize)).0;
+                    sphere_image.draw(&assets.sphere_tex, &context.draw_state, transform, graphics);
+                    let weapons_image = sphere_image
+                        .color(if v.1 == weapon {
+                            [1., 1., 1., 1.]
+                        } else {
+                            [0.5, 0.5, 0.5, 1.]
+                        })
+                        .src_rect([
+                            v.0 as f64 * 32.,
+                            0.,
+                            32.,
+                            assets.weapons_tex.get_height() as f64,
+                        ]);
+                    weapons_image.draw(
+                        &assets.weapons_tex,
+                        &context.draw_state,
+                        transform,
+                        graphics,
+                    );
+                }
+
                 // Display player lives
                 for i in 0..player.lives {
                     let width = assets.player_tex.get_width();

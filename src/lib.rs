@@ -40,16 +40,12 @@ macro_rules! js_err {
     }
 }
 
-mod consts;
-mod entity;
-mod xor128;
-
-use crate::consts::*;
-use crate::entity::{
+use game_logic::consts::*;
+use game_logic::entity::{
     Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Player, Projectile,
     ShaderBundle, ShieldedBoss, TempEntity, Weapon,
 };
-use crate::xor128::Xor128;
+use game_logic::xor128::Xor128;
 
 #[wasm_bindgen]
 extern "C" {
@@ -80,31 +76,7 @@ fn get_context() -> GL {
 }
 
 #[wasm_bindgen]
-pub struct ShooterState {
-    time: usize,
-    disptime: usize,
-    paused: bool,
-    game_over: bool,
-    id_gen: u32,
-    player: Player,
-    enemies: Vec<Enemy>,
-    items: Vec<Item>,
-    bullets: HashMap<u32, Projectile>,
-    tent: Vec<TempEntity>,
-    rng: Xor128,
-    shots_bullet: usize,
-    shots_missile: usize,
-
-    shoot_pressed: bool,
-    left_pressed: bool,
-    right_pressed: bool,
-    up_pressed: bool,
-    down_pressed: bool,
-
-    player_live_icons: Vec<Element>,
-
-    assets: Assets,
-}
+pub struct ShooterState(game_logic::ShooterState);
 
 #[wasm_bindgen]
 impl ShooterState {
@@ -170,7 +142,7 @@ impl ShooterState {
         ));
         player.reset();
 
-        Ok(Self {
+        Ok(Self(game_logic::ShooterState {
             time: 0,
             disptime: 0,
             paused: false,
@@ -217,27 +189,27 @@ impl ShooterState {
                 rect_buffer: None,
                 trail_buffer: None,
             },
-        })
+        }))
     }
 
     pub fn key_down(&mut self, event: web_sys::KeyboardEvent) -> Result<JsString, JsValue> {
         println!("key: {}", event.key_code());
         match event.key_code() {
-            32 => self.shoot_pressed = true,
-            65 | 37 => self.left_pressed = true,
-            68 | 39 => self.right_pressed = true,
+            32 => self.0.shoot_pressed = true,
+            65 | 37 => self.0.left_pressed = true,
+            68 | 39 => self.0.right_pressed = true,
             80 => {
                 // P
-                self.paused = !self.paused;
+                self.0.paused = !self.0.paused;
                 let paused_element = document().get_element_by_id("paused").unwrap();
-                paused_element.set_class_name(if self.paused {
+                paused_element.set_class_name(if self.0.paused {
                     "noselect"
                 } else {
                     "noselect hidden"
                 })
             }
-            87 | 38 => self.up_pressed = true,
-            83 | 40 => self.down_pressed = true,
+            87 | 38 => self.0.up_pressed = true,
+            83 | 40 => self.0.down_pressed = true,
             88 | 90 => {
                 // Z or X
                 use Weapon::*;
@@ -248,7 +220,7 @@ impl ShooterState {
                     ("Missile", Missile),
                     ("Lightning", Lightning),
                 ];
-                let (name, next_weapon) = match self.player.weapon {
+                let (name, next_weapon) = match self.0.player.weapon {
                     Bullet => {
                         if is_x {
                             &weapon_set[1]
@@ -278,40 +250,30 @@ impl ShooterState {
                         }
                     }
                 };
-                self.player.weapon = next_weapon.clone();
+                self.0.player.weapon = next_weapon.clone();
                 println!("Weapon switched: {}", name);
             }
             _ => (),
         }
-        Ok(JsString::from(self.player.weapon.to_string()))
+        Ok(JsString::from(self.0.player.weapon.to_string()))
     }
 
     pub fn key_up(&mut self, event: web_sys::KeyboardEvent) {
         console_log!("key: {}", event.key_code());
         match event.key_code() {
-            32 => self.shoot_pressed = false,
-            65 | 37 => self.left_pressed = false,
-            68 | 39 => self.right_pressed = false,
-            87 | 38 => self.up_pressed = false,
-            83 | 40 => self.down_pressed = false,
+            32 => self.0.shoot_pressed = false,
+            65 | 37 => self.0.left_pressed = false,
+            68 | 39 => self.0.right_pressed = false,
+            87 | 38 => self.0.up_pressed = false,
+            83 | 40 => self.0.down_pressed = false,
             _ => (),
         }
     }
 
     pub fn restart(&mut self) -> Result<(), JsValue> {
-        self.items.clear();
-        self.enemies.clear();
-        self.bullets.clear();
-        self.tent.clear();
-        self.time = 0;
-        self.id_gen = 0;
-        self.player.reset();
-        self.shots_bullet = 0;
-        self.shots_missile = 0;
-        self.paused = false;
-        self.game_over = false;
+        self.restart();
 
-        for icon in &self.player_live_icons {
+        for icon in &self.0.player_live_icons {
             icon.set_class_name("");
         }
         let game_over_element = document()
@@ -369,7 +331,7 @@ impl ShooterState {
         context.blend_equation(GL::FUNC_ADD);
         context.blend_func(GL::SRC_ALPHA, GL::ONE_MINUS_SRC_ALPHA);
 
-        self.assets.sprite_shader = Some(shader);
+        self.0.assets.sprite_shader = Some(shader);
 
         let vert_shader = compile_shader(
             &context,
@@ -404,21 +366,23 @@ impl ShooterState {
         )?;
         let program = link_program(&context, &vert_shader, &frag_shader)?;
         context.use_program(Some(&program));
-        self.assets.trail_shader = Some(ShaderBundle::new(&context, program));
+        self.0.assets.trail_shader = Some(ShaderBundle::new(&context, program));
 
         context.active_texture(GL::TEXTURE0);
         context.uniform1i(
-            self.assets
+            self.0
+                .assets
                 .trail_shader
                 .as_ref()
                 .and_then(|s| s.texture_loc.as_ref()),
             0,
         );
 
-        self.assets.trail_buffer = Some(context.create_buffer().ok_or("failed to create buffer")?);
+        self.0.assets.trail_buffer =
+            Some(context.create_buffer().ok_or("failed to create buffer")?);
 
-        self.assets.rect_buffer = Some(context.create_buffer().ok_or("failed to create buffer")?);
-        context.bind_buffer(GL::ARRAY_BUFFER, self.assets.rect_buffer.as_ref());
+        self.0.assets.rect_buffer = Some(context.create_buffer().ok_or("failed to create buffer")?);
+        context.bind_buffer(GL::ARRAY_BUFFER, self.0.assets.rect_buffer.as_ref());
         let rect_vertices: [f32; 8] = [1., 1., -1., 1., -1., -1., 1., -1.];
         vertex_buffer_data(&context, &rect_vertices)?;
 
@@ -430,7 +394,7 @@ impl ShooterState {
     pub fn render(&mut self) -> Result<(), JsValue> {
         let context = get_context();
 
-        if self.time > 300000 {
+        if self.0.time > 300000 {
             console_log!("All done!");
 
             // Drop our handle to this closure so that it will get cleaned
@@ -439,15 +403,15 @@ impl ShooterState {
             return Ok(());
         }
 
-        if !self.paused {
-            self.time += 1;
+        if !self.0.paused {
+            self.0.time += 1;
         }
-        self.disptime += 1;
+        self.0.disptime += 1;
 
         // state must be passed as arguments since they are mutable
         // borrows and needs to be released for each iteration.
         // These variables are used in between multiple invocation of this closure.
-        let add_tent = |is_bullet, pos: &[f64; 2], state: &mut ShooterState| {
+        let add_tent = |is_bullet, pos: &[f64; 2], state: &mut game_logic::ShooterState| {
             let mut ent = Entity::new(
                 &mut state.id_gen,
                 [
@@ -479,12 +443,12 @@ impl ShooterState {
             });
         };
 
-        if !self.paused {
+        if !self.0.paused {
             let dice = 256;
-            let rng = &mut self.rng;
+            let rng = &mut self.0.rng;
             let mut i = rng.gen_range(0, dice);
             let [enemy_count, boss_count, shielded_boss_count, spiral_count] =
-                self.enemies.iter().fold([0; 4], |mut c, e| match e {
+                self.0.enemies.iter().fold([0; 4], |mut c, e| match e {
                     Enemy::Enemy1(_) => {
                         c[0] += 1;
                         c
@@ -502,11 +466,11 @@ impl ShooterState {
                         c
                     }
                 });
-            let gen_amount = self.player.difficulty_level() * 2 + 4;
+            let gen_amount = self.0.player.difficulty_level() * 2 + 4;
             while i < gen_amount {
                 let weights = [
                     if enemy_count < 128 {
-                        if self.player.score < 1024 {
+                        if self.0.player.score < 1024 {
                             64
                         } else {
                             16
@@ -555,17 +519,19 @@ impl ShooterState {
                         _ => panic!("RNG returned out of range"),
                     };
                     if let Some(x) = accum.iter().position(|x| dice < *x) {
-                        self.enemies.push(match x {
-                            0 => {
-                                Enemy::Enemy1(EnemyBase::new(&mut self.id_gen, pos, velo).health(3))
-                            }
-                            1 => {
-                                Enemy::Boss(EnemyBase::new(&mut self.id_gen, pos, velo).health(64))
-                            }
-                            2 => {
-                                Enemy::ShieldedBoss(ShieldedBoss::new(&mut self.id_gen, pos, velo))
-                            }
-                            _ => Enemy::new_spiral(&mut self.id_gen, pos, velo),
+                        self.0.enemies.push(match x {
+                            0 => Enemy::Enemy1(
+                                EnemyBase::new(&mut self.0.id_gen, pos, velo).health(3),
+                            ),
+                            1 => Enemy::Boss(
+                                EnemyBase::new(&mut self.0.id_gen, pos, velo).health(64),
+                            ),
+                            2 => Enemy::ShieldedBoss(ShieldedBoss::new(
+                                &mut self.0.id_gen,
+                                pos,
+                                velo,
+                            )),
+                            _ => Enemy::new_spiral(&mut self.0.id_gen, pos, velo),
                         });
                     }
                 }
@@ -576,7 +542,8 @@ impl ShooterState {
         context.clear(GL::COLOR_BUFFER_BIT);
 
         context.uniform_matrix4fv_with_f32_array(
-            self.assets
+            self.0
+                .assets
                 .sprite_shader
                 .as_ref()
                 .unwrap()
@@ -585,47 +552,51 @@ impl ShooterState {
             false,
             <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&Matrix4::from_scale(1.)),
         );
-        context.bind_texture(GL::TEXTURE_2D, Some(&self.assets.back_tex));
+        context.bind_texture(GL::TEXTURE_2D, Some(&self.0.assets.back_tex));
         context.draw_arrays(GL::TRIANGLE_FAN, 0, 4);
 
-        if !self.game_over && !self.paused {
-            if self.up_pressed {
-                self.player.move_up()
+        if !self.0.game_over && !self.0.paused {
+            if self.0.up_pressed {
+                self.0.player.move_up()
             }
-            if self.down_pressed {
-                self.player.move_down()
+            if self.0.down_pressed {
+                self.0.player.move_down()
             }
-            if self.left_pressed {
-                self.player.move_left()
+            if self.0.left_pressed {
+                self.0.player.move_left()
             }
-            if self.right_pressed {
-                self.player.move_right()
+            if self.0.right_pressed {
+                self.0.player.move_right()
             }
 
-            if self.shoot_pressed && self.player.cooldown == 0 {
-                let weapon = &self.player.weapon;
+            if self.0.shoot_pressed && self.0.player.cooldown == 0 {
+                let weapon = &self.0.player.weapon;
                 let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
 
                 if Weapon::Bullet == *weapon || Weapon::Missile == *weapon {
-                    let level = self.player.power_level() as i32;
-                    self.player.cooldown += shoot_period;
+                    let level = self.0.player.power_level() as i32;
+                    self.0.player.cooldown += shoot_period;
                     for i in -1 - level..2 + level {
                         let speed = if let Weapon::Bullet = weapon {
                             BULLET_SPEED
                         } else {
                             MISSILE_SPEED
                         };
-                        let mut ent =
-                            Entity::new(&mut self.id_gen, self.player.base.pos, [i as f64, -speed])
-                                .rotation((i as f32).atan2(speed as f32));
+                        let mut ent = Entity::new(
+                            &mut self.0.id_gen,
+                            self.0.player.base.pos,
+                            [i as f64, -speed],
+                        )
+                        .rotation((i as f32).atan2(speed as f32));
                         if let Weapon::Bullet = weapon {
-                            self.shots_bullet += 1;
-                            self.bullets
+                            self.0.shots_bullet += 1;
+                            self.0
+                                .bullets
                                 .insert(ent.id, Projectile::Bullet(BulletBase(ent)));
                         } else {
-                            self.shots_missile += 1;
+                            self.0.shots_missile += 1;
                             ent = ent.health(5);
-                            self.bullets.insert(
+                            self.0.bullets.insert(
                                 ent.id,
                                 Projectile::Missile {
                                     base: BulletBase(ent),
@@ -637,11 +608,11 @@ impl ShooterState {
                     }
                 } else if Weapon::Light == *weapon {
                     let gl = &context;
-                    let assets = &self.assets;
-                    let player = &self.player;
+                    let assets = &self.0.assets;
+                    let player = &self.0.player;
                     let level = player.power_level() as i32;
 
-                    gl.use_program(Some(&self.assets.trail_shader.as_ref().unwrap().program));
+                    gl.use_program(Some(&self.0.assets.trail_shader.as_ref().unwrap().program));
                     let shader = assets.trail_shader.as_ref().unwrap();
 
                     gl.uniform1i(shader.texture_loc.as_ref(), 0);
@@ -689,17 +660,17 @@ impl ShooterState {
                         player.base.pos[0] + LIGHT_WIDTH,
                         player.base.pos[1],
                     ];
-                    let mut enemies = std::mem::take(&mut self.enemies);
+                    let mut enemies = std::mem::take(&mut self.0.enemies);
                     for enemy in &mut enemies {
                         if enemy.test_hit(beam_rect) {
-                            add_tent(true, &enemy.get_base().pos, self);
+                            add_tent(true, &enemy.get_base().pos, &mut self.0);
                             enemy.damage(1 + level);
                         }
                     }
-                    self.enemies = enemies;
+                    self.0.enemies = enemies;
                 } else if Weapon::Lightning == *weapon {
                     let nmax = std::cmp::min(
-                        (self.player.power_level() + 1 + self.time as u32 % 2) / 2,
+                        (self.0.player.power_level() + 1 + self.0.time as u32 % 2) / 2,
                         31,
                     );
 
@@ -715,19 +686,30 @@ impl ShooterState {
 
                     for _ in 0..nmax {
                         // Use the same seed twice to reproduce random sequence
-                        let seed = self.rng.nexti();
+                        let seed = self.0.rng.nexti();
 
                         // Lambda to call the same lightning sequence twice, first pass for detecting hit enemy
                         // and second pass for rendering.
-                        let lightning = |state: &mut Self, seed: u32, length: u32, f: &mut dyn FnMut(&mut Self, &[f64; 4]) -> bool| {
+                        let lightning = |state: &mut Self,
+                                         seed: u32,
+                                         length: u32,
+                                         f: &mut dyn FnMut(
+                            &mut game_logic::ShooterState,
+                            &[f64; 4],
+                        ) -> bool| {
                             let mut rng2 = Xor128::new(seed);
-                            let mut a = [state.player.base.pos[0],state.player.base.pos[1], 0., -16.];
+                            let mut a = [
+                                state.0.player.base.pos[0],
+                                state.0.player.base.pos[1],
+                                0.,
+                                -16.,
+                            ];
                             for i in 0..length {
                                 let ox = a[0];
                                 let oy = a[1];
                                 next_lightning(&mut rng2, &mut a);
                                 let segment = [ox, oy, a[0], a[1]];
-                                if !f(state, &segment) {
+                                if !f(&mut state.0, &segment) {
                                     return i;
                                 }
                             }
@@ -738,7 +720,7 @@ impl ShooterState {
                             self,
                             seed,
                             LIGHTNING_VERTICES,
-                            &mut |state: &mut Self, segment: &[f64; 4]| {
+                            &mut |state: &mut game_logic::ShooterState, segment: &[f64; 4]| {
                                 let b = [segment[2], segment[3]];
                                 for enemy in state.enemies.iter_mut() {
                                     let ebb = enemy.get_bb();
@@ -757,13 +739,13 @@ impl ShooterState {
                         );
                         let hit = length != LIGHTNING_VERTICES;
 
-                        gl.use_program(Some(&self.assets.trail_shader.as_ref().unwrap().program));
-                        let shader = self.assets.trail_shader.as_ref().unwrap();
+                        gl.use_program(Some(&self.0.assets.trail_shader.as_ref().unwrap().program));
+                        let shader = self.0.assets.trail_shader.as_ref().unwrap();
 
                         gl.uniform1i(shader.texture_loc.as_ref(), 0);
-                        gl.bind_texture(GL::TEXTURE_2D, Some(&self.assets.beam_tex));
+                        gl.bind_texture(GL::TEXTURE_2D, Some(&self.0.assets.beam_tex));
 
-                        enable_buffer(gl, &self.assets.trail_buffer, 4, shader.vertex_position);
+                        enable_buffer(gl, &self.0.assets.trail_buffer, 4, shader.vertex_position);
 
                         let mut vertices = vec![];
                         let mut prev_node_opt = None;
@@ -795,12 +777,12 @@ impl ShooterState {
 
                         vertex_buffer_data(gl, &vertices).unwrap();
 
-                        let shader = self.assets.trail_shader.as_ref().unwrap();
+                        let shader = self.0.assets.trail_shader.as_ref().unwrap();
                         gl.uniform_matrix4fv_with_f32_array(
                             shader.transform_loc.as_ref(),
                             false,
                             <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(
-                                &self.assets.world_transform.cast().unwrap(),
+                                &self.0.assets.world_transform.cast().unwrap(),
                             ),
                         );
 
@@ -814,36 +796,47 @@ impl ShooterState {
 
                         enable_buffer(
                             gl,
-                            &self.assets.rect_buffer,
+                            &self.0.assets.rect_buffer,
                             2,
-                            self.assets.sprite_shader.as_ref().unwrap().vertex_position,
+                            self.0
+                                .assets
+                                .sprite_shader
+                                .as_ref()
+                                .unwrap()
+                                .vertex_position,
                         );
                     }
                 }
             }
-            if self.player.cooldown < 1 {
-                self.player.cooldown = 0;
+            if self.0.player.cooldown < 1 {
+                self.0.player.cooldown = 0;
             } else {
-                self.player.cooldown -= 1;
+                self.0.player.cooldown -= 1;
             }
 
-            if 0 < self.player.invtime {
-                self.player.invtime -= 1;
+            if 0 < self.0.player.invtime {
+                self.0.player.invtime -= 1;
             }
         }
 
-        context.use_program(Some(&self.assets.sprite_shader.as_ref().unwrap().program));
+        context.use_program(Some(&self.0.assets.sprite_shader.as_ref().unwrap().program));
 
         enable_buffer(
             &context,
-            &self.assets.rect_buffer,
+            &self.0.assets.rect_buffer,
             2,
-            self.assets.sprite_shader.as_ref().unwrap().vertex_position,
+            self.0
+                .assets
+                .sprite_shader
+                .as_ref()
+                .unwrap()
+                .vertex_position,
         );
 
         let load_identity = |state: &Self| {
             context.uniform_matrix3fv_with_f32_array(
                 state
+                    .0
                     .assets
                     .sprite_shader
                     .as_ref()
@@ -859,44 +852,44 @@ impl ShooterState {
 
         let mut to_delete: Vec<usize> = Vec::new();
 
-        for (i, e) in &mut ((&mut self.items).iter_mut().enumerate()) {
-            if !self.paused {
-                if let Some(_) = e.animate(&mut self.player) {
+        for (i, e) in &mut ((&mut self.0.items).iter_mut().enumerate()) {
+            if !self.0.paused {
+                if let Some(_) = e.animate(&mut self.0.player) {
                     to_delete.push(i);
                     continue;
                 }
             }
-            e.draw(&context, &self.assets);
+            e.draw(&context, &self.0.assets);
         }
 
         for i in to_delete.iter().rev() {
-            let dead = self.items.remove(*i);
+            let dead = self.0.items.remove(*i);
             console_log!(
                 "Deleted Item id={}: {} / {}",
                 dead.get_base().id,
                 *i,
-                self.items.len()
+                self.0.items.len()
             );
         }
         to_delete.clear();
 
-        for enemy in &self.enemies {
-            enemy.draw(self, &context, &self.assets);
+        for enemy in &self.0.enemies {
+            enemy.draw(&self.0, &context, &self.0.assets);
         }
 
-        if !self.paused {
-            self.enemies = std::mem::take(&mut self.enemies)
+        if !self.0.paused {
+            self.0.enemies = std::mem::take(&mut self.0.enemies)
                 .into_iter()
                 .filter_map(|mut enemy| {
-                    if let Some(death_reason) = enemy.animate(self) {
+                    if let Some(death_reason) = enemy.animate(&mut self.0) {
                         if let DeathReason::Killed = death_reason {
-                            self.player.kills += 1;
-                            self.player.score += if enemy.is_boss() { 10 } else { 1 };
-                            if self.rng.gen_range(0, 100) < 20 {
+                            self.0.player.kills += 1;
+                            self.0.player.score += if enemy.is_boss() { 10 } else { 1 };
+                            if self.0.rng.gen_range(0, 100) < 20 {
                                 let ent =
-                                    Entity::new(&mut self.id_gen, enemy.get_base().pos, [0., 1.]);
-                                self.items.push(enemy.drop_item(ent));
-                                console_log!("item dropped: {:?}", self.items.len());
+                                    Entity::new(&mut self.0.id_gen, enemy.get_base().pos, [0., 1.]);
+                                self.0.items.push(enemy.drop_item(ent));
+                                console_log!("item dropped: {:?}", self.0.items.len());
                             }
                         }
                         None
@@ -907,15 +900,16 @@ impl ShooterState {
                 .collect();
         }
 
-        for (_, bullet) in &self.bullets {
-            bullet.draw(self, &context, &self.assets);
+        for (_, bullet) in &self.0.bullets {
+            bullet.draw(&self.0, &context, &self.0.assets);
         }
 
-        if !self.paused {
-            self.bullets = std::mem::take(&mut self.bullets)
+        if !self.0.paused {
+            self.0.bullets = std::mem::take(&mut self.0.bullets)
                 .into_iter()
                 .filter_map(|(id, mut bullet)| {
-                    if let Some(reason) = bullet.animate_bullet(&mut self.enemies, &mut self.player)
+                    if let Some(reason) =
+                        bullet.animate_bullet(&mut self.0.enemies, &mut self.0.player)
                     {
                         match reason {
                             DeathReason::Killed | DeathReason::HitPlayer => add_tent(
@@ -925,24 +919,26 @@ impl ShooterState {
                                     true
                                 },
                                 &bullet.get_base().0.pos,
-                                self,
+                                &mut self.0,
                             ),
                             _ => {}
                         }
 
                         if let DeathReason::HitPlayer = reason {
-                            if self.player.invtime == 0 && !self.game_over && 0 < self.player.lives
+                            if self.0.player.invtime == 0
+                                && !self.0.game_over
+                                && 0 < self.0.player.lives
                             {
-                                self.player.lives -= 1;
-                                self.player_live_icons[self.player.lives as usize]
+                                self.0.player.lives -= 1;
+                                self.0.player_live_icons[self.0.player.lives as usize]
                                     .set_class_name("hidden");
-                                if self.player.lives == 0 {
-                                    self.game_over = true;
+                                if self.0.player.lives == 0 {
+                                    self.0.game_over = true;
                                     let game_over_element =
                                         document().get_element_by_id("gameOver")?;
                                     game_over_element.set_class_name("");
                                 } else {
-                                    self.player.invtime = PLAYER_INVINCIBLE_TIME;
+                                    self.0.player.invtime = PLAYER_INVINCIBLE_TIME;
                                 }
                             }
                         }
@@ -956,29 +952,29 @@ impl ShooterState {
         }
 
         let mut to_delete = vec![];
-        for (i, e) in &mut ((&mut self.tent).iter_mut().enumerate()) {
-            if !self.paused {
+        for (i, e) in &mut ((&mut self.0.tent).iter_mut().enumerate()) {
+            if !self.0.paused {
                 if let Some(_) = e.animate_temp() {
                     to_delete.push(i);
                     continue;
                 }
             }
-            e.draw_temp(&context, &self.assets);
+            e.draw_temp(&context, &self.0.assets);
         }
 
         for i in to_delete.iter().rev() {
-            self.tent.remove(*i);
+            self.0.tent.remove(*i);
             //println!("Deleted tent {} / {}", *i, bullets.len());
         }
 
         load_identity(self);
 
-        if !self.game_over {
-            if self.player.invtime == 0 || self.disptime % 2 == 0 {
-                self.player.base.draw_tex(
-                    &self.assets,
+        if !self.0.game_over {
+            if self.0.player.invtime == 0 || self.0.disptime % 2 == 0 {
+                self.0.player.base.draw_tex(
+                    &self.0.assets,
                     &context,
-                    &self.assets.player_texture,
+                    &self.0.assets.player_texture,
                     Some(PLAYER_SIZE),
                 );
             }
@@ -989,26 +985,26 @@ impl ShooterState {
             frame_element.set_inner_html(text);
         }
 
-        set_text("frame", &format!("Frame: {}", self.time));
-        set_text("score", &format!("Score: {}", self.player.score));
-        set_text("kills", &format!("Kills: {}", self.player.kills));
+        set_text("frame", &format!("Frame: {}", self.0.time));
+        set_text("score", &format!("Score: {}", self.0.player.score));
+        set_text("kills", &format!("Kills: {}", self.0.player.kills));
         set_text(
             "difficulty",
-            &format!("Difficulty Level: {}", self.player.difficulty_level()),
+            &format!("Difficulty Level: {}", self.0.player.difficulty_level()),
         );
         set_text(
             "power",
             &format!(
                 "Power: {} Level: {}",
-                self.player.power,
-                self.player.power_level()
+                self.0.player.power,
+                self.0.player.power_level()
             ),
         );
         set_text(
             "shots",
-            &format!("Shots {}/{}", self.shots_bullet, self.shots_missile),
+            &format!("Shots {}/{}", self.0.shots_bullet, self.0.shots_missile),
         );
-        set_text("weapon", &format!("Weapon: {:#?}", self.player.weapon));
+        set_text("weapon", &format!("Weapon: {:#?}", self.0.player.weapon));
 
         Ok(())
     }

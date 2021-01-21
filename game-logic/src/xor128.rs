@@ -1,4 +1,4 @@
-pub(crate) struct Xor128 {
+pub struct Xor128 {
     x: u32,
 }
 

@@ -1,13 +1,15 @@
+#[cfg(feature = "webgl")]
 use js_sys::Atomics::xor;
 #[cfg(feature = "webgl")]
 use web_sys::{
     Element, HtmlImageElement, WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlShader,
     WebGlTexture,
 };
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
+#[cfg(feature = "webgl")]
+use wasm_bindgen::{prelude::*, JsCast};
 use std::{collections::HashMap, vec};
 
+#[cfg(feature = "webgl")]
 macro_rules! console_log {
     ($fmt:expr, $($arg1:expr),*) => {
         crate::log(&format!($fmt, $($arg1),+))
@@ -17,6 +19,17 @@ macro_rules! console_log {
     }
 }
 
+#[cfg(not(feature = "webgl"))]
+macro_rules! console_log {
+    ($fmt:expr, $($arg1:expr),*) => {
+        println!($fmt, $($arg1),+)
+    };
+    ($fmt:expr) => {
+        println!($fmt)
+    }
+}
+
+#[cfg(feature = "webgl")]
 /// format-like macro that returns js_sys::String
 macro_rules! js_str {
     ($fmt:expr, $($arg1:expr),*) => {
@@ -27,6 +40,7 @@ macro_rules! js_str {
     }
 }
 
+#[cfg(feature = "webgl")]
 /// format-like macro that returns Err(js_sys::String)
 macro_rules! js_err {
     ($fmt:expr, $($arg1:expr),*) => {
@@ -50,11 +64,18 @@ use crate::entity::{
 use crate::entity::ShaderBundle;
 use xor128::Xor128;
 
+#[cfg(feature = "webgl")]
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     pub(crate) fn log(s: &str);
 }
+
+#[cfg(feature = "webgl")]
+type ShooterError = JsValue;
+
+#[cfg(not(feature = "webgl"))]
+type ShooterError = std::io::Error;
 
 pub struct ShooterState {
     pub time: usize,
@@ -84,7 +105,7 @@ pub struct ShooterState {
 }
 
 impl ShooterState {
-    pub fn restart(&mut self) -> Result<(), JsValue> {
+    pub fn restart(&mut self) -> Result<(), ShooterError> {
         self.items.clear();
         self.enemies.clear();
         self.bullets.clear();

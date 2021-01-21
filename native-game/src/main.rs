@@ -40,6 +40,8 @@ fn main() {
     let mut paused = false;
     let mut game_over = true;
 
+    let [mut shots_bullet, mut shots_missile] = [0, 0];
+
     let mut weapon = Weapon::Bullet;
 
     let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
@@ -101,6 +103,33 @@ fn main() {
                     ));
                 }
 
+                let wave_period = 1024;
+
+                // Right side bar
+                rectangle(
+                    [0.20, 0.20, 0.4, 1.],
+                    [
+                        WIDTH as f64,
+                        0.,
+                        (WINDOW_WIDTH - WIDTH) as f64,
+                        WINDOW_HEIGHT as f64,
+                    ],
+                    context.transform,
+                    graphics,
+                );
+
+                rectangle(
+                    [0., 0.5, 0.4, 1.],
+                    [
+                        WIDTH as f64,
+                        (3) as f64 * 12.0 + 4.,
+                        player.power as f64,
+                        8.,
+                    ],
+                    context.transform,
+                    graphics,
+                );
+
                 let mut draw_text_pos = |s: &str, pos: [f64; 2], color: [f32; 4], size: u32| {
                     text::Text::new_color(color, size)
                         .draw(
@@ -112,6 +141,58 @@ fn main() {
                         )
                         .unwrap_or_default();
                 };
+
+                if paused {
+                    draw_text_pos(
+                        "PAUSED",
+                        [(WIDTH / 2 - 80) as f64, (HEIGHT / 2) as f64],
+                        [1.0, 1.0, 0.0, 1.0],
+                        20,
+                    );
+                }
+
+                if game_over {
+                    let color = [1.0, 1.0, 1.0, 1.0];
+                    draw_text_pos(
+                        "GAME OVER",
+                        [(WIDTH / 2 - 80) as f64, (HEIGHT * 3 / 4) as f64],
+                        color,
+                        20,
+                    );
+                    draw_text_pos(
+                        "Press Space to Start",
+                        [(WIDTH / 2 - 110) as f64, (HEIGHT * 3 / 4 + 20) as f64],
+                        color,
+                        20,
+                    );
+                }
+
+                let mut draw_text = |s: &str, line: i32| {
+                    draw_text_pos(
+                        s,
+                        [WIDTH as f64, (line + 1) as f64 * 12.0],
+                        [0.0, 1.0, 0.0, 1.0],
+                        12,
+                    )
+                };
+
+                draw_text(&format!("Frame: {}", time), 0);
+                draw_text(&format!("Score: {}", player.score), 1);
+                draw_text(&format!("Kills: {}", player.kills), 2);
+                draw_text(
+                    &format!("Power: {}, Level: {}", player.power, player.power_level()),
+                    3,
+                );
+                draw_text(
+                    &format!(
+                        "Wave: {} Level: {}",
+                        time / wave_period,
+                        player.difficulty_level()
+                    ),
+                    4,
+                );
+                draw_text(&format!("shots_bullet: {}", shots_bullet), 5);
+                draw_text(&format!("shots_missile: {}", shots_missile), 6);
 
                 let weapon_set = [
                     (0, Weapon::Bullet, [1., 0.5, 0.]),

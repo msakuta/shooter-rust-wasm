@@ -2,10 +2,13 @@ use core::f64;
 
 use crate::consts::*;
 use crate::xor128::Xor128;
-use crate::{enable_buffer, vertex_buffer_data, ShooterState};
+#[cfg(feature = "webgl")]
+use crate::{enable_buffer, vertex_buffer_data};
+use crate::ShooterState;
 use cgmath::{Matrix3, Matrix4, Rad, Vector2, Vector3};
 use std::rc::Rc;
 use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
+#[cfg(feature = "webgl")]
 use web_sys::{
     WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlTexture, WebGlUniformLocation,
 };
@@ -73,6 +76,7 @@ impl Entity {
         }
     }
 
+    #[cfg(feature = "webgl")]
     pub fn draw_tex(
         &self,
         assets: &Assets,
@@ -233,6 +237,7 @@ pub enum Enemy {
     SpiralEnemy(EnemyBase),
 }
 
+#[cfg(feature = "webgl")]
 pub struct ShaderBundle {
     pub program: WebGlProgram,
     pub vertex_position: u32,
@@ -242,6 +247,7 @@ pub struct ShaderBundle {
     pub tex_transform_loc: Option<WebGlUniformLocation>,
 }
 
+#[cfg(feature = "webgl")]
 impl ShaderBundle {
     pub fn new(gl: &GL, program: WebGlProgram) -> Self {
         let vertex_position = gl.get_attrib_location(&program, "vertexData") as u32;
@@ -272,6 +278,7 @@ impl ShaderBundle {
     }
 }
 
+#[cfg(feature = "webgl")]
 pub struct Assets {
     pub world_transform: Matrix4<f64>,
 
@@ -300,6 +307,9 @@ pub struct Assets {
     pub trail_buffer: Option<WebGlBuffer>,
     pub rect_buffer: Option<WebGlBuffer>,
 }
+
+#[cfg(not(feature = "webgl"))]
+pub struct Assets{}
 
 impl Enemy {
     pub fn get_base(&self) -> &Entity {
@@ -434,6 +444,7 @@ impl Enemy {
         }
     }
 
+    #[cfg(feature = "webgl")]
     pub fn draw(&self, _state: &ShooterState, gl: &GL, assets: &Assets) {
         self.get_base().draw_tex(
             assets,
@@ -688,6 +699,7 @@ impl Projectile {
         ]
     }
 
+    #[cfg(feature = "webgl")]
     pub fn draw(&self, state: &ShooterState, gl: &GL, assets: &Assets) {
         if let Projectile::Missile { trail, .. } = self {
             let mut iter = trail.iter().enumerate();
@@ -780,6 +792,7 @@ impl Item {
         }
     }
 
+    #[cfg(feature = "webgl")]
     pub fn draw(&self, gl: &GL, assets: &Assets) {
         match self {
             Item::PowerUp(item) => item.draw_tex(&assets, gl, &assets.power_tex, Some(ITEM_SIZE)),
@@ -811,6 +824,7 @@ impl Item {
 
 pub struct TempEntity {
     pub base: Entity,
+    #[cfg(feature = "webgl")]
     pub texture: Rc<WebGlTexture>,
     pub max_frames: u32,
     pub width: u32,
@@ -830,6 +844,7 @@ impl TempEntity {
         self.base.animate()
     }
 
+    #[cfg(feature = "webgl")]
     pub fn draw_temp(&self, context: &GL, assets: &Assets) {
         let shader = assets.sprite_shader.as_ref().unwrap();
         let pos = &self.base.pos;

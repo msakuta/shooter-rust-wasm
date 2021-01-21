@@ -1,4 +1,5 @@
 use js_sys::Atomics::xor;
+#[cfg(feature = "webgl")]
 use web_sys::{
     Element, HtmlImageElement, WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlShader,
     WebGlTexture,
@@ -43,8 +44,10 @@ pub mod xor128;
 use crate::consts::*;
 use crate::entity::{
     Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Player, Projectile,
-    ShaderBundle, ShieldedBoss, TempEntity, Weapon,
+    ShieldedBoss, TempEntity, Weapon,
 };
+#[cfg(feature = "webgl")]
+use crate::entity::ShaderBundle;
 use xor128::Xor128;
 
 #[wasm_bindgen]
@@ -74,6 +77,7 @@ pub struct ShooterState {
     pub up_pressed: bool,
     pub down_pressed: bool,
 
+    #[cfg(feature = "webgl")]
     pub player_live_icons: Vec<Element>,
 
     pub assets: Assets,
@@ -96,6 +100,7 @@ impl ShooterState {
     }
 }
 
+#[cfg(feature = "webgl")]
 fn vertex_buffer_data(context: &GL, vertices: &[f32]) -> Result<(), JsValue> {
     // Note that `Float32Array::view` is somewhat dangerous (hence the
     // `unsafe`!). This is creating a raw view into our module's
@@ -113,6 +118,7 @@ fn vertex_buffer_data(context: &GL, vertices: &[f32]) -> Result<(), JsValue> {
     Ok(())
 }
 
+#[cfg(feature = "webgl")]
 fn enable_buffer(gl: &GL, buffer: &Option<WebGlBuffer>, elements: i32, vertex_position: u32) {
     gl.bind_buffer(GL::ARRAY_BUFFER, buffer.as_ref());
     gl.vertex_attrib_pointer_with_i32(vertex_position, elements, GL::FLOAT, false, 0, 0);

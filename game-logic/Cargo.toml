@@ -13,7 +13,11 @@ vecmath = "1.0.0"
 slice-of-array = "0.2.1"
 js-sys = "0.3.46"
 
+[features]
+webgl = [ "web-sys" ]
+
 [dependencies.web-sys]
+optional = true
 version = "0.3.4"
 features = [
   'Document',

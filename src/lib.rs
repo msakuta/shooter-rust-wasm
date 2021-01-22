@@ -583,32 +583,9 @@ impl ShooterState {
 
         self.0.animate_items();
 
-        for enemy in &self.0.enemies {
-            enemy.draw(&self.0, &context, &self.0.assets);
-        }
+        self.0.draw_enemies(&context);
 
-        if !self.0.paused {
-            self.0.enemies = std::mem::take(&mut self.0.enemies)
-                .into_iter()
-                .filter_map(|mut enemy| {
-                    if let Some(death_reason) = enemy.animate(&mut self.0) {
-                        if let DeathReason::Killed = death_reason {
-                            self.0.player.kills += 1;
-                            self.0.player.score += if enemy.is_boss() { 10 } else { 1 };
-                            if self.0.rng.gen_range(0, 100) < 20 {
-                                let ent =
-                                    Entity::new(&mut self.0.id_gen, enemy.get_base().pos, [0., 1.]);
-                                self.0.items.push(enemy.drop_item(ent));
-                                console_log!("item dropped: {:?}", self.0.items.len());
-                            }
-                        }
-                        None
-                    } else {
-                        Some(enemy)
-                    }
-                })
-                .collect();
-        }
+        self.0.animate_enemies();
 
         for (_, bullet) in &self.0.bullets {
             bullet.draw(&self.0, &context, &self.0.assets);

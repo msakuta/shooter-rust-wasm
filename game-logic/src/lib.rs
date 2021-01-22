@@ -456,6 +456,13 @@ impl ShooterState {
         }
     }
 
+    #[cfg(feature = "webgl")]
+    pub fn draw_enemies(&self, gl: &GL) {
+        for enemy in &self.enemies {
+            enemy.draw(self, gl, &self.assets);
+        }
+    }
+
     #[cfg(all(not(feature = "webgl"), feature = "piston"))]
     pub fn draw_enemies(
         &self,

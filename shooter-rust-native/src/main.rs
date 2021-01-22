@@ -317,27 +317,9 @@ fn main() -> Result<(), ShooterError> {
                 }
                 disptime += 1;
 
-                let mut to_delete: Vec<usize> = Vec::new();
+                state.draw_items(&context, graphics, &assets);
 
-                for (i, e) in &mut ((&mut state.items).iter_mut().enumerate()) {
-                    if !paused {
-                        if let Some(_) = e.animate(&mut state.player) {
-                            to_delete.push(i);
-                            continue;
-                        }
-                    }
-                    e.draw(&context, graphics, &assets);
-                }
-
-                for i in to_delete.iter().rev() {
-                    let dead = state.items.remove(*i);
-                    println!(
-                        "Deleted Item id={}: {} / {}",
-                        dead.get_base().id,
-                        *i,
-                        state.items.len()
-                    );
-                }
+                state.animate_items();
 
                 let mut to_delete: Vec<usize> = Vec::new();
                 let mut enemies = std::mem::take(&mut state.enemies);
@@ -361,7 +343,7 @@ fn main() -> Result<(), ShooterError> {
                             if rng.gen_range(0, 100) < 20 {
                                 let ent =
                                     Entity::new(&mut state.id_gen, enemy.get_base().pos, [0., 1.]);
-                                items.push(enemy.drop_item(ent));
+                                state.items.push(enemy.drop_item(ent));
                             }
                             continue;
                         }
@@ -691,8 +673,6 @@ fn main() -> Result<(), ShooterError> {
                         Key::Space => {
                             if tf {
                                 state.restart()?;
-                                items.clear();
-                                state.bullets.clear();
                                 tent.clear();
                                 shots_bullet = 0;
                                 shots_missile = 0;

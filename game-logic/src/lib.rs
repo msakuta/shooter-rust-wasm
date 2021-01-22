@@ -300,6 +300,47 @@ impl ShooterState {
             });
         }
     }
+
+    #[cfg(feature = "webgl")]
+    pub fn draw_items(&self, gl: &GL) {
+        for item in &self.items {
+            item.draw(gl, &self.assets);
+        }
+    }
+
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub fn draw_items(
+        &self,
+        context: &Context,
+        graphics: &mut piston_window::G2d,
+        assets: &Assets,
+    ) {
+        for item in &self.items {
+            item.draw(&context, graphics, &assets);
+        }
+    }
+
+    pub fn animate_items(&mut self) {
+        let mut to_delete = vec![];
+        for (i, e) in &mut ((&mut self.items).iter_mut().enumerate()) {
+            if !self.paused {
+                if let Some(_) = e.animate(&mut self.player) {
+                    to_delete.push(i);
+                    continue;
+                }
+            }
+        }
+
+        for i in to_delete.iter().rev() {
+            let dead = self.items.remove(*i);
+            println!(
+                "Deleted Item id={}: {} / {}",
+                dead.get_base().id,
+                *i,
+                self.items.len()
+            );
+        }
+    }
 }
 
 #[cfg(feature = "webgl")]

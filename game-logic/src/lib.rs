@@ -170,6 +170,36 @@ impl ShooterState {
         ent.blend(Blend::Add)
     }
 
+    /// Function to call the same lightning sequence twice, first pass for detecting hit enemy
+    /// and second pass for rendering.
+    pub fn lightning(
+        &mut self,
+        seed: u32,
+        length: u32,
+        f: &mut dyn FnMut(&mut Self, &[f64; 4]) -> bool,
+    ) -> u32 {
+        // Random walk with momentum
+        fn next_lightning(rng: &mut Xor128, a: &mut [f64; 4]) {
+            a[2] += LIGHTNING_ACCEL * (rng.next() - 0.5) - a[2] * LIGHTNING_FEEDBACK;
+            a[3] += LIGHTNING_ACCEL * (rng.next() - 0.5) - a[3] * LIGHTNING_FEEDBACK;
+            a[0] += a[2];
+            a[1] += a[3];
+        }
+
+        let mut rng2 = Xor128::new(seed);
+        let mut a = [self.player.base.pos[0], self.player.base.pos[1], 0., -16.];
+        for i in 0..length {
+            let ox = a[0];
+            let oy = a[1];
+            next_lightning(&mut rng2, &mut a);
+            let segment = [ox, oy, a[0], a[1]];
+            if !f(self, &segment) {
+                return i;
+            }
+        }
+        length
+    }
+
     pub fn try_shoot(
         &mut self,
         key_shoot: bool,
@@ -235,41 +265,11 @@ impl ShooterState {
             );
             let mut branch_rng = Xor128::new(seed);
 
-            // Random walk with momentum
-            fn next_lightning(rng: &mut Xor128, a: &mut [f64; 4]) {
-                a[2] += LIGHTNING_ACCEL * (rng.next() - 0.5) - a[2] * LIGHTNING_FEEDBACK;
-                a[3] += LIGHTNING_ACCEL * (rng.next() - 0.5) - a[3] * LIGHTNING_FEEDBACK;
-                a[0] += a[2];
-                a[1] += a[3];
-            }
-
             for _ in 0..nmax {
                 // Use the same seed twice to reproduce random sequence
                 let seed = branch_rng.nexti();
 
-                // Lambda to call the same lightning sequence twice, first pass for detecting hit enemy
-                // and second pass for rendering.
-                let lightning =
-                    |state: &mut Self,
-                     seed: u32,
-                     length: u32,
-                     f: &mut dyn FnMut(&mut Self, &[f64; 4]) -> bool| {
-                        let mut rng2 = Xor128::new(seed);
-                        let mut a = [state.player.base.pos[0], state.player.base.pos[1], 0., -16.];
-                        for i in 0..length {
-                            let ox = a[0];
-                            let oy = a[1];
-                            next_lightning(&mut rng2, &mut a);
-                            let segment = [ox, oy, a[0], a[1]];
-                            if !f(state, &segment) {
-                                return i;
-                            }
-                        }
-                        length
-                    };
-
-                let length = lightning(
-                    self,
+                let length = self.lightning(
                     seed,
                     LIGHTNING_VERTICES,
                     &mut |state: &mut Self, segment: &[f64; 4]| {

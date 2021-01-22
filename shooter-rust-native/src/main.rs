@@ -139,67 +139,70 @@ fn main() -> Result<(), ShooterError> {
                     state.try_shoot(key_shoot, &weapon, seed, &mut enemies, &mut add_tent);
 
                     if Weapon::Light == weapon && key_shoot {
-                        // Apparently Piston doesn't allow vertex colored rectangle, we need to 
+                        // Apparently Piston doesn't allow vertex colored rectangle, we need to
                         // draw multiple lines in order to display gradual change in color.
                         for i in -3..4 {
                             let f = (4. - (i as i32).abs() as f32) / 4.;
-                            line([f / 3., 0.5 + f / 2., 1., f],
+                            line(
+                                [f / 3., 0.5 + f / 2., 1., f],
                                 1.,
-                                [state.player.base.pos[0] + i as f64, state.player.base.pos[1],
-                                state.player.base.pos[0] + i as f64, 0.],
-                                context.transform, graphics);
+                                [
+                                    state.player.base.pos[0] + i as f64,
+                                    state.player.base.pos[1],
+                                    state.player.base.pos[0] + i as f64,
+                                    0.,
+                                ],
+                                context.transform,
+                                graphics,
+                            );
                         }
-                    }
-                    else if Weapon::Lightning == weapon && key_shoot {
-                        let col = [1.,1.,1.,1.];
-                        let col2 = [1.,0.5,1.,0.25];
-                        let nmax = std::cmp::min((state.player.power_level() as usize + 1 + state.time % 2) / 2, 31);
+                    } else if Weapon::Lightning == weapon && key_shoot {
+                        let col = [1., 1., 1., 1.];
+                        let col2 = [1., 0.5, 1., 0.25];
+                        let nmax = std::cmp::min(
+                            (state.player.power_level() as usize + 1 + state.time % 2) / 2,
+                            31,
+                        );
                         let mut branch_rng = Xor128::new(seed);
-
-                        // Random walk with momentum
-                        fn next_lightning(rng: &mut Xor128, a: &mut [f64; 4]){
-                            a[2] += LIGHTNING_ACCEL * (rng.next() - 0.5) - a[2] * LIGHTNING_FEEDBACK;
-                            a[3] += LIGHTNING_ACCEL * (rng.next() - 0.5) - a[3] * LIGHTNING_FEEDBACK;
-                            a[0] += a[2];
-                            a[1] += a[3];
-                        }
 
                         for _ in 0..nmax {
                             // Use the same seed twice to reproduce random sequence
                             let seed = branch_rng.nexti();
 
-                            // Lambda to call the same lightning sequence twice, first pass for detecting hit enemy
-                            // and second pass for rendering.
-                            let lightning = |state: &ShooterState, seed: u32, length: u32, f: &mut dyn FnMut(&[f64; 4]) -> bool| {
-                                let mut rng2 = Xor128::new(seed);
-                                let mut a = [state.player.base.pos[0], state.player.base.pos[1], 0., -16.];
-                                for i in 0..length {
-                                    let ox = a[0];
-                                    let oy = a[1];
-                                    next_lightning(&mut rng2, &mut a);
-                                    let segment = [ox, oy, a[0], a[1]];
-                                    if !f(&segment) {
-                                        return i;
+                            let length = state.lightning(
+                                seed,
+                                LIGHTNING_VERTICES,
+                                &mut |_: &mut ShooterState, segment: &[f64; 4]| {
+                                    let b = [segment[2], segment[3]];
+                                    for enemy in enemies.iter_mut() {
+                                        let ebb = enemy.get_bb();
+                                        if ebb[0] < b[0] + 4.
+                                            && b[0] - 4. <= ebb[2]
+                                            && ebb[1] < b[1] + 4.
+                                            && b[1] - 4. <= ebb[3]
+                                        {
+                                            return false;
+                                        }
                                     }
-                                }
-                                length
-                            };
-                            let length = lightning(&state, seed, LIGHTNING_VERTICES, &mut |segment: &[f64; 4]| {
-                                let b = [segment[2], segment[3]];
-                                for enemy in enemies.iter_mut() {
-                                    let ebb = enemy.get_bb();
-                                    if ebb[0] < b[0] + 4. && b[0] - 4. <= ebb[2] && ebb[1] < b[1] + 4. && b[1] - 4. <= ebb[3] {
-                                        return false;
-                                    }
-                                }
-                                return true;
-                            });
+                                    return true;
+                                },
+                            );
                             let hit = length != LIGHTNING_VERTICES;
 
-                            lightning(&state, seed, length, &mut |segment: &[f64; 4]| {
-                                line(if hit { col } else { col2 }, if hit { 2. } else { 1. }, *segment, context.transform, graphics);
-                                true
-                            });
+                            state.lightning(
+                                seed,
+                                length,
+                                &mut |_: &mut ShooterState, segment: &[f64; 4]| {
+                                    line(
+                                        if hit { col } else { col2 },
+                                        if hit { 2. } else { 1. },
+                                        *segment,
+                                        context.transform,
+                                        graphics,
+                                    );
+                                    true
+                                },
+                            );
                         }
                     }
 

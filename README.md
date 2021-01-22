@@ -18,7 +18,7 @@ Try it now in your browser! https://msakuta.github.io/shooter-rust-wasm/
 * N - Restart new game
 
 
-# Building
+# Building web application
 
 ## Prerequisites
 
@@ -47,6 +47,40 @@ It will start webpack-dev-server, launch a browser and show http://localhost:808
 ### Launch production distribution
 
     npm run build
+
+# Building native application
+
+There is also  native application version implemented with [Piston](https://github.com/PistonDevelopers/piston) game engine
+that can be compiled in a sub-crate `shooter-rust-native`.
+
+Below is a screenshot on Windows.
+
+![image](screenshots/screenshot02.jpg)
+
+Honestly I wouldn't much like to keep the native version,
+because Wasm is more portable, fast to compile and even looks
+faster to run.
+But I will keep it anyway as an exercise making portable
+application among native and the web.
+
+It should support all platforms that Piston supports, which is basically desktops, like Windows, Linux or Mac.
+
+## How to build and run
+
+Install
+
+* Cargo >1.40
+
+Run
+
+    cd shooter-rust-native
+    cargo run --release
+
+Note that `cargo run --release --package shooter-rust-native` won't work, because the root crate assumes
+different feature set than native version.
+The root crate uses "webgl" feature, which will enable wasm-bindgen and generating Wasm interface,
+which is not compatible with native version.
+
 
 # History
 

@@ -673,28 +673,9 @@ impl ShooterState {
 
         load_identity(self);
 
-        let mut to_delete: Vec<usize> = Vec::new();
+        self.0.draw_items(&context);
 
-        for (i, e) in &mut ((&mut self.0.items).iter_mut().enumerate()) {
-            if !self.0.paused {
-                if let Some(_) = e.animate(&mut self.0.player) {
-                    to_delete.push(i);
-                    continue;
-                }
-            }
-            e.draw(&context, &self.0.assets);
-        }
-
-        for i in to_delete.iter().rev() {
-            let dead = self.0.items.remove(*i);
-            console_log!(
-                "Deleted Item id={}: {} / {}",
-                dead.get_base().id,
-                *i,
-                self.0.items.len()
-            );
-        }
-        to_delete.clear();
+        self.0.animate_items();
 
         for enemy in &self.0.enemies {
             enemy.draw(&self.0, &context, &self.0.assets);

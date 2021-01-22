@@ -4,7 +4,7 @@ use slice_of_array::SliceFlatExt;
 use vecmath::{vec2_add, vec2_normalized, vec2_scale, vec2_sub};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlShader};
+use web_sys::{WebGlProgram, WebGlRenderingContext as GL, WebGlShader};
 
 use game_logic::{
     console_log,

@@ -220,7 +220,6 @@ impl ShooterState {
         key_shoot: bool,
         weapon: &Weapon,
         seed: u32,
-        enemies: &mut Vec<Enemy>,
         add_tent: &mut impl FnMut(bool, &[f64; 2], &mut u32, &mut Xor128),
     ) {
         let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
@@ -260,7 +259,7 @@ impl ShooterState {
             }
         } else if Weapon::Light == *weapon && key_shoot {
             let player = &self.player;
-            for enemy in enemies.iter_mut() {
+            for enemy in self.enemies.iter_mut() {
                 if enemy.test_hit([
                     player.base.pos[0] - LIGHT_WIDTH,
                     0.,
@@ -278,7 +277,7 @@ impl ShooterState {
                     LIGHTNING_VERTICES,
                     &mut |state: &mut Self, segment: &[f64; 4]| {
                         let b = [segment[2], segment[3]];
-                        for enemy in enemies.iter_mut() {
+                        for enemy in state.enemies.iter_mut() {
                             let ebb = enemy.get_bb();
                             if ebb[0] < b[0] + 4.
                                 && b[0] - 4. <= ebb[2]

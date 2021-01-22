@@ -27,8 +27,6 @@ fn main() -> Result<(), ShooterError> {
 
     let mut state = ShooterState::new(None);
 
-    let mut enemies = Vec::<Enemy>::new();
-
     let mut items = Vec::<Item>::new();
 
     let mut tent = Vec::<TempEntity>::new();
@@ -136,7 +134,7 @@ fn main() -> Result<(), ShooterError> {
                     // Use the same seed twice to reproduce random sequence
                     let seed = state.rng.nexti();
 
-                    state.try_shoot(key_shoot, &weapon, seed, &mut enemies, &mut add_tent);
+                    state.try_shoot(key_shoot, &weapon, seed, &mut add_tent);
 
                     if Weapon::Light == weapon && key_shoot {
                         // Apparently Piston doesn't allow vertex colored rectangle, we need to
@@ -163,9 +161,9 @@ fn main() -> Result<(), ShooterError> {
                             let length = state.lightning_branch(
                                 seed,
                                 LIGHTNING_VERTICES,
-                                &mut |_: &mut ShooterState, segment: &[f64; 4]| {
+                                &mut |state: &mut ShooterState, segment: &[f64; 4]| {
                                     let b = [segment[2], segment[3]];
-                                    for enemy in enemies.iter_mut() {
+                                    for enemy in state.enemies.iter_mut() {
                                         let ebb = enemy.get_bb();
                                         if ebb[0] < b[0] + 4.
                                             && b[0] - 4. <= ebb[2]
@@ -210,7 +208,7 @@ fn main() -> Result<(), ShooterError> {
                     let wave = state.time % wave_period;
                     if wave < wave_period * 3 / 4 {
                         let [enemy_count, boss_count, shielded_boss_count, spiral_count] =
-                            enemies.iter().fold([0; 4], |mut c, e| match e {
+                            state.enemies.iter().fold([0; 4], |mut c, e| match e {
                                 Enemy::Enemy1(_) => {
                                     c[0] += 1;
                                     c
@@ -287,7 +285,7 @@ fn main() -> Result<(), ShooterError> {
                                     _ => panic!("RNG returned out of range"),
                                 };
                                 if let Some(x) = accum.iter().position(|x| dice < *x) {
-                                    enemies.push(match x {
+                                    state.enemies.push(match x {
                                         0 => Enemy::Enemy1(
                                             EnemyBase::new(&mut state.id_gen, pos, velo).health(3),
                                         ),
@@ -345,6 +343,7 @@ fn main() -> Result<(), ShooterError> {
                 }
 
                 let mut to_delete: Vec<usize> = Vec::new();
+                let mut enemies = std::mem::take(&mut state.enemies);
                 for (i, enemy) in &mut ((&mut enemies).iter_mut().enumerate()) {
                     if !paused {
                         let killed = {
@@ -372,9 +371,10 @@ fn main() -> Result<(), ShooterError> {
                     }
                     enemy.draw(&context, graphics, &assets);
                 }
+                state.enemies = enemies;
 
                 for i in to_delete.iter().rev() {
-                    let dead = enemies.remove(*i);
+                    let dead = state.enemies.remove(*i);
                     println!(
                         "Deleted Enemy {} id={}: {} / {}",
                         match dead {
@@ -385,7 +385,7 @@ fn main() -> Result<(), ShooterError> {
                         },
                         dead.get_id(),
                         *i,
-                        enemies.len()
+                        state.enemies.len()
                     );
                 }
 
@@ -393,7 +393,7 @@ fn main() -> Result<(), ShooterError> {
                 for (i, b) in &mut state.bullets.iter_mut() {
                     if !paused {
                         if let Some(death_reason) =
-                            b.animate_bullet(&mut enemies, &mut state.player)
+                            b.animate_bullet(&mut state.enemies, &mut state.player)
                         {
                             bullets_to_delete.push(*i);
 
@@ -694,7 +694,6 @@ fn main() -> Result<(), ShooterError> {
                             if tf {
                                 state.restart()?;
                                 items.clear();
-                                enemies.clear();
                                 state.bullets.clear();
                                 tent.clear();
                                 shots_bullet = 0;

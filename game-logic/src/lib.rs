@@ -220,7 +220,7 @@ impl ShooterState {
         key_shoot: bool,
         weapon: &Weapon,
         seed: u32,
-        add_tent: &mut impl FnMut(bool, &[f64; 2], &mut u32, &mut Xor128),
+        add_tent: &mut impl FnMut(bool, &[f64; 2], &mut ShooterState),
     ) {
         let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
 
@@ -259,17 +259,22 @@ impl ShooterState {
             }
         } else if Weapon::Light == *weapon && key_shoot {
             let player = &self.player;
-            for enemy in self.enemies.iter_mut() {
-                if enemy.test_hit([
-                    player.base.pos[0] - LIGHT_WIDTH,
-                    0.,
-                    player.base.pos[0] + LIGHT_WIDTH,
-                    player.base.pos[1],
-                ]) {
-                    add_tent(true, &enemy.get_base().pos, &mut self.id_gen, &mut self.rng);
-                    enemy.damage(1 + player.power_level() as i32);
+            let level = player.power_level() as i32;
+            let beam_rect = [
+                player.base.pos[0] - LIGHT_WIDTH,
+                0.,
+                player.base.pos[0] + LIGHT_WIDTH,
+                player.base.pos[1],
+            ];
+
+            let mut enemies = std::mem::take(&mut self.enemies);
+            for enemy in &mut enemies {
+                if enemy.test_hit(beam_rect) {
+                    add_tent(true, &enemy.get_base().pos, self);
+                    enemy.damage(1 + level);
                 }
             }
+            self.enemies = enemies;
         } else if Weapon::Lightning == *weapon && key_shoot {
             self.lightning(seed, &mut |state, seed| {
                 state.lightning_branch(
@@ -285,7 +290,7 @@ impl ShooterState {
                                 && b[1] - 4. <= ebb[3]
                             {
                                 enemy.damage(2 + state.rng.gen_range(0, 3) as i32);
-                                add_tent(true, &b, &mut state.id_gen, &mut state.rng);
+                                add_tent(true, &b, state);
                                 return false;
                             }
                         }

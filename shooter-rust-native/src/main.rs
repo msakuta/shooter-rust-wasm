@@ -91,16 +91,16 @@ fn main() -> Result<(), ShooterError> {
                 // borrows and needs to be released for each iteration.
                 // These variables are used in between multiple invocation of this closure.
                 let mut add_tent =
-                    |is_bullet, pos: &[f64; 2], id_gen: &mut u32, rng: &mut Xor128| {
+                    |is_bullet, pos: &[f64; 2], state: &mut ShooterState| {
                         let mut ent = Entity::new(
-                            id_gen,
+                            &mut state.id_gen,
                             [
-                                pos[0] + 4. * (rng.next() - 0.5),
-                                pos[1] + 4. * (rng.next() - 0.5),
+                                pos[0] + 4. * (state.rng.next() - 0.5),
+                                pos[1] + 4. * (state.rng.next() - 0.5),
                             ],
                             [0., 0.],
                         )
-                        .rotation(rng.next() as f32 * 2. * std::f32::consts::PI);
+                        .rotation(state.rng.next() as f32 * 2. * std::f32::consts::PI);
                         let (playback_rate, max_frames) = if is_bullet { (2, 8) } else { (4, 6) };
                         ent = ent.health((max_frames * playback_rate) as i32);
 
@@ -390,7 +390,8 @@ fn main() -> Result<(), ShooterError> {
                 }
 
                 let mut bullets_to_delete: Vec<u32> = Vec::new();
-                for (i, b) in &mut state.bullets.iter_mut() {
+                let mut bullets = std::mem::take(&mut state.bullets);
+                for (i, b) in &mut bullets {
                     if !paused {
                         if let Some(death_reason) =
                             b.animate_bullet(&mut state.enemies, &mut state.player)
@@ -407,8 +408,7 @@ fn main() -> Result<(), ShooterError> {
                                         true
                                     },
                                     &base.0.pos,
-                                    &mut state.id_gen,
-                                    &mut state.rng,
+                                    &mut state,
                                 ),
                                 _ => {}
                             }
@@ -429,6 +429,7 @@ fn main() -> Result<(), ShooterError> {
 
                     b.draw(&context, graphics, &assets);
                 }
+                state.bullets = bullets;
 
                 for i in bullets_to_delete.iter() {
                     if let Some(b) = state.bullets.remove(i) {

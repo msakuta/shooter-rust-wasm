@@ -607,10 +607,8 @@ impl ShooterState {
 }
 
 #[cfg(feature = "webgl")]
-//
-// Initialize a texture and load an image.
-// When the image finished loading copy it into the texture.
-//
+/// Initialize a texture and load an image.
+/// When the image finished loading copy it into the texture.
 fn load_texture(gl: &GL, url: &str) -> Result<Rc<WebGlTexture>, JsValue> {
     fn window() -> Option<web_sys::Window> {
         web_sys::window()

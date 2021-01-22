@@ -432,6 +432,9 @@ impl ShooterState {
     }
 
     pub fn animate_items(&mut self) {
+        if self.paused {
+            return;
+        }
         let mut to_delete = vec![];
         for (i, e) in &mut ((&mut self.items).iter_mut().enumerate()) {
             if !self.paused {
@@ -466,6 +469,9 @@ impl ShooterState {
     }
 
     pub fn animate_enemies(&mut self) {
+        if self.paused {
+            return;
+        }
         let mut to_delete: Vec<usize> = Vec::new();
         let mut enemies = std::mem::take(&mut self.enemies);
         for (i, enemy) in &mut ((&mut enemies).iter_mut().enumerate()) {

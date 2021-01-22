@@ -31,9 +31,6 @@ fn main() -> Result<(), ShooterError> {
 
     let mut rng = thread_rng();
 
-    let mut paused = false;
-    let mut game_over = true;
-
     let [mut shots_bullet, mut shots_missile] = [0, 0];
 
     let [mut key_up, mut key_down, mut key_left, mut key_right, mut key_shoot, mut key_change, mut key_pause] =
@@ -114,7 +111,7 @@ fn main() -> Result<(), ShooterError> {
                     })
                 };
 
-                if !game_over && !paused {
+                if !state.game_over && !state.paused {
                     if key_up {
                         state.player.move_up()
                     }
@@ -201,7 +198,7 @@ fn main() -> Result<(), ShooterError> {
 
                 let wave_period = state.gen_enemies();
 
-                if !game_over {
+                if !state.game_over {
                     if state.player.invtime == 0 || disptime % 2 == 0 {
                         state
                             .player
@@ -210,7 +207,7 @@ fn main() -> Result<(), ShooterError> {
                     }
                 }
 
-                if !paused {
+                if !state.paused {
                     state.time += 1;
                 }
                 disptime += 1;
@@ -226,7 +223,7 @@ fn main() -> Result<(), ShooterError> {
                 let mut bullets_to_delete: Vec<u32> = Vec::new();
                 let mut bullets = std::mem::take(&mut state.bullets);
                 for (i, b) in &mut bullets {
-                    if !paused {
+                    if !state.paused {
                         if let Some(death_reason) =
                             b.animate_bullet(&mut state.enemies, &mut state.player)
                         {
@@ -248,11 +245,13 @@ fn main() -> Result<(), ShooterError> {
                             }
 
                             if let DeathReason::HitPlayer = death_reason {
-                                if state.player.invtime == 0 && !game_over && 0 < state.player.lives
+                                if state.player.invtime == 0
+                                    && !state.game_over
+                                    && 0 < state.player.lives
                                 {
                                     state.player.lives -= 1;
                                     if state.player.lives == 0 {
-                                        game_over = true;
+                                        state.game_over = true;
                                     } else {
                                         state.player.invtime = PLAYER_INVINCIBLE_TIME;
                                     }
@@ -283,7 +282,7 @@ fn main() -> Result<(), ShooterError> {
 
                 let mut to_delete = vec![];
                 for (i, e) in &mut ((&mut tent).iter_mut().enumerate()) {
-                    if !paused {
+                    if !state.paused {
                         if let Some(_) = e.animate_temp() {
                             to_delete.push(i);
                             continue;
@@ -334,7 +333,7 @@ fn main() -> Result<(), ShooterError> {
                         .unwrap_or_default();
                 };
 
-                if paused {
+                if state.paused {
                     draw_text_pos(
                         "PAUSED",
                         [(WIDTH / 2 - 80) as f64, (HEIGHT / 2) as f64],
@@ -343,7 +342,7 @@ fn main() -> Result<(), ShooterError> {
                     );
                 }
 
-                if game_over {
+                if state.game_over {
                     let color = [1.0, 1.0, 1.0, 1.0];
                     draw_text_pos(
                         "GAME OVER",
@@ -476,7 +475,7 @@ fn main() -> Result<(), ShooterError> {
                         Key::Right | Key::D => key_right = tf,
                         Key::C => key_shoot = tf,
                         Key::Z | Key::X => {
-                            if !key_change && tf && !game_over {
+                            if !key_change && tf && !state.game_over {
                                 use Weapon::*;
                                 let weapon_set = [
                                     ("Bullet", Bullet),
@@ -521,7 +520,7 @@ fn main() -> Result<(), ShooterError> {
                         }
                         Key::P => {
                             if !key_pause && tf {
-                                paused = !paused;
+                                state.paused = !state.paused;
                             }
                             key_pause = tf;
                         }
@@ -531,8 +530,6 @@ fn main() -> Result<(), ShooterError> {
                                 tent.clear();
                                 shots_bullet = 0;
                                 shots_missile = 0;
-                                paused = false;
-                                game_over = false;
                             }
                         }
                         Key::G => {

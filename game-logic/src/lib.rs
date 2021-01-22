@@ -114,7 +114,7 @@ impl ShooterState {
         let mut id_gen = 0;
         let mut player = Player::new(Entity::new(
             &mut id_gen,
-            [FWIDTH / 2., FHEIGHT / 2.],
+            [FWIDTH / 2., FHEIGHT * 3. / 4.],
             [0., 0.],
         ));
         player.reset();

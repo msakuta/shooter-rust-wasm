@@ -26,7 +26,6 @@ fn main() -> Result<(), ShooterError> {
     let (assets, mut glyphs) = Assets::new(&mut window);
 
     let mut state = ShooterState::new(None);
-    let mut player = Player::new(Entity::new(&mut state.id_gen, [240., 400.], [0., 0.]));
 
     let mut enemies = Vec::<Enemy>::new();
 

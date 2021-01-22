@@ -90,32 +90,31 @@ fn main() -> Result<(), ShooterError> {
                 // id_gen and rng must be passed as arguments since they are mutable
                 // borrows and needs to be released for each iteration.
                 // These variables are used in between multiple invocation of this closure.
-                let mut add_tent =
-                    |is_bullet, pos: &[f64; 2], state: &mut ShooterState| {
-                        let mut ent = Entity::new(
-                            &mut state.id_gen,
-                            [
-                                pos[0] + 4. * (state.rng.next() - 0.5),
-                                pos[1] + 4. * (state.rng.next() - 0.5),
-                            ],
-                            [0., 0.],
-                        )
-                        .rotation(state.rng.next() as f32 * 2. * std::f32::consts::PI);
-                        let (playback_rate, max_frames) = if is_bullet { (2, 8) } else { (4, 6) };
-                        ent = ent.health((max_frames * playback_rate) as i32);
+                let mut add_tent = |is_bullet, pos: &[f64; 2], state: &mut ShooterState| {
+                    let mut ent = Entity::new(
+                        &mut state.id_gen,
+                        [
+                            pos[0] + 4. * (state.rng.next() - 0.5),
+                            pos[1] + 4. * (state.rng.next() - 0.5),
+                        ],
+                        [0., 0.],
+                    )
+                    .rotation(state.rng.next() as f32 * 2. * std::f32::consts::PI);
+                    let (playback_rate, max_frames) = if is_bullet { (2, 8) } else { (4, 6) };
+                    ent = ent.health((max_frames * playback_rate) as i32);
 
-                        tent.push(TempEntity {
-                            base: ent,
-                            texture: if is_bullet {
-                                &assets.explode_tex
-                            } else {
-                                &assets.explode2_tex
-                            },
-                            max_frames,
-                            width: if is_bullet { 16 } else { 32 },
-                            playback_rate,
-                        })
-                    };
+                    tent.push(TempEntity {
+                        base: ent,
+                        texture: if is_bullet {
+                            &assets.explode_tex
+                        } else {
+                            &assets.explode2_tex
+                        },
+                        max_frames,
+                        width: if is_bullet { 16 } else { 32 },
+                        playback_rate,
+                    })
+                };
 
                 if !game_over && !paused {
                     if key_up {

@@ -184,7 +184,7 @@ impl Entity {
     }
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum Weapon {
     Bullet,
     Light,

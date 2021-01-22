@@ -209,27 +209,51 @@ fn main() -> Result<(), ShooterError> {
                     let dice = 256;
                     let wave = state.time % wave_period;
                     if wave < wave_period * 3 / 4 {
-                        let [enemy_count, boss_count, shielded_boss_count, spiral_count]
-                             = enemies.iter().fold([0; 4],
-                            |mut c, e| match e {
-                                Enemy::Enemy1(_) => {c[0] += 1; c},
-                                Enemy::Boss(_) => {c[1] += 1; c},
-                                Enemy::ShieldedBoss(_) => {c[2] += 1; c},
-                                Enemy::SpiralEnemy(_) => {c[3] += 1; c},
+                        let [enemy_count, boss_count, shielded_boss_count, spiral_count] =
+                            enemies.iter().fold([0; 4], |mut c, e| match e {
+                                Enemy::Enemy1(_) => {
+                                    c[0] += 1;
+                                    c
+                                }
+                                Enemy::Boss(_) => {
+                                    c[1] += 1;
+                                    c
+                                }
+                                Enemy::ShieldedBoss(_) => {
+                                    c[2] += 1;
+                                    c
+                                }
+                                Enemy::SpiralEnemy(_) => {
+                                    c[3] += 1;
+                                    c
+                                }
                             });
                         let gen_amount = state.player.difficulty_level() * 4 + 8;
                         let mut i = rng.gen_range(0, dice);
                         while i < gen_amount {
                             let weights = [
-                                if enemy_count < 128 { if state.player.score < 1024 { 64 } else { 16 } } else { 0 },
+                                if enemy_count < 128 {
+                                    if state.player.score < 1024 {
+                                        64
+                                    } else {
+                                        16
+                                    }
+                                } else {
+                                    0
+                                },
                                 if boss_count < 32 { 4 } else { 0 },
-                                if shielded_boss_count < 32 { std::cmp::min(4, state.player.difficulty_level()) } else { 0 },
-                                if spiral_count < 4 { 4 } else { 0 }];
+                                if shielded_boss_count < 32 {
+                                    std::cmp::min(4, state.player.difficulty_level())
+                                } else {
+                                    0
+                                },
+                                if spiral_count < 4 { 4 } else { 0 },
+                            ];
                             let allweights = weights.iter().fold(0, |sum, x| sum + x);
                             let accum = {
                                 let mut accum = [0; 4];
                                 let mut accumulator = 0;
-                                for (i,e) in weights.iter().enumerate() {
+                                for (i, e) in weights.iter().enumerate() {
                                     accumulator += e;
                                     accum[i] = accumulator;
                                 }
@@ -239,27 +263,42 @@ fn main() -> Result<(), ShooterError> {
                             if 0 < allweights {
                                 let dice = rng.gen_range(0, allweights);
                                 let (pos, velo) = match rng.gen_range(0, 3) {
-                                    0 => { // top
-                                        ([rng.gen_range(0., WIDTH as f64), 0.], [rng.gen::<f64>() - 0.5, rng.gen::<f64>() * 0.5])
-                                    },
-                                    1 => { // left
-                                        ([0., rng.gen_range(0., WIDTH as f64)], [rng.gen::<f64>() * 0.5, rng.gen::<f64>() - 0.5])
-                                    },
-                                    2 => { // right
-                                        ([WIDTH as f64, rng.gen_range(0., WIDTH as f64)], [-rng.gen::<f64>() * 0.5, rng.gen::<f64>() - 0.5])
+                                    0 => {
+                                        // top
+                                        (
+                                            [rng.gen_range(0., WIDTH as f64), 0.],
+                                            [rng.gen::<f64>() - 0.5, rng.gen::<f64>() * 0.5],
+                                        )
                                     }
-                                    _ => panic!("RNG returned out of range")
+                                    1 => {
+                                        // left
+                                        (
+                                            [0., rng.gen_range(0., WIDTH as f64)],
+                                            [rng.gen::<f64>() * 0.5, rng.gen::<f64>() - 0.5],
+                                        )
+                                    }
+                                    2 => {
+                                        // right
+                                        (
+                                            [WIDTH as f64, rng.gen_range(0., WIDTH as f64)],
+                                            [-rng.gen::<f64>() * 0.5, rng.gen::<f64>() - 0.5],
+                                        )
+                                    }
+                                    _ => panic!("RNG returned out of range"),
                                 };
                                 if let Some(x) = accum.iter().position(|x| dice < *x) {
                                     enemies.push(match x {
-                                        0 => Enemy::Enemy1(EnemyBase::new(&mut state.id_gen, pos, velo)
-                                            .health(3)),
-                                        1 => Enemy::Boss(EnemyBase::new(&mut state.id_gen, pos, velo)
-                                            .health(64)),
+                                        0 => Enemy::Enemy1(
+                                            EnemyBase::new(&mut state.id_gen, pos, velo).health(3),
+                                        ),
+                                        1 => Enemy::Boss(
+                                            EnemyBase::new(&mut state.id_gen, pos, velo).health(64),
+                                        ),
                                         2 => Enemy::ShieldedBoss(ShieldedBoss::new(
-                                                &mut state.id_gen,
-                                                pos,
-                                                velo)),
+                                            &mut state.id_gen,
+                                            pos,
+                                            velo,
+                                        )),
                                         _ => Enemy::new_spiral(&mut state.id_gen, pos, velo),
                                     });
                                 }
@@ -271,7 +310,8 @@ fn main() -> Result<(), ShooterError> {
 
                 if !game_over {
                     if state.player.invtime == 0 || disptime % 2 == 0 {
-                        state.player
+                        state
+                            .player
                             .base
                             .draw_tex(&context, graphics, &assets.player_tex, None);
                     }
@@ -296,7 +336,12 @@ fn main() -> Result<(), ShooterError> {
 
                 for i in to_delete.iter().rev() {
                     let dead = items.remove(*i);
-                    println!("Deleted Item id={}: {} / {}", dead.get_base().id, *i, items.len());
+                    println!(
+                        "Deleted Item id={}: {} / {}",
+                        dead.get_base().id,
+                        *i,
+                        items.len()
+                    );
                 }
 
                 let mut to_delete: Vec<usize> = Vec::new();
@@ -305,38 +350,51 @@ fn main() -> Result<(), ShooterError> {
                         let killed = {
                             if let Some(death_reason) = enemy.animate(&mut state) {
                                 to_delete.push(i);
-                                if let DeathReason::Killed = death_reason {true} else{false}
+                                if let DeathReason::Killed = death_reason {
+                                    true
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
                             }
-                            else {false}
                         };
                         if killed {
                             state.player.kills += 1;
                             state.player.score += if enemy.is_boss() { 10 } else { 1 };
                             if rng.gen_range(0, 100) < 20 {
-                                let ent = Entity::new(&mut state.id_gen, enemy.get_base().pos, [0., 1.]);
+                                let ent =
+                                    Entity::new(&mut state.id_gen, enemy.get_base().pos, [0., 1.]);
                                 items.push(enemy.drop_item(ent));
                             }
                             continue;
                         }
                     }
                     enemy.draw(&context, graphics, &assets);
-
                 }
 
                 for i in to_delete.iter().rev() {
                     let dead = enemies.remove(*i);
-                    println!("Deleted Enemy {} id={}: {} / {}", match dead {
-                        Enemy::Enemy1(_) => "enemy",
-                        Enemy::Boss(_) => "boss",
-                        Enemy::ShieldedBoss(_) => "ShieldedBoss",
-                        Enemy::SpiralEnemy(_) => "SpiralEnemy",
-                    }, dead.get_id(), *i, enemies.len());
+                    println!(
+                        "Deleted Enemy {} id={}: {} / {}",
+                        match dead {
+                            Enemy::Enemy1(_) => "enemy",
+                            Enemy::Boss(_) => "boss",
+                            Enemy::ShieldedBoss(_) => "ShieldedBoss",
+                            Enemy::SpiralEnemy(_) => "SpiralEnemy",
+                        },
+                        dead.get_id(),
+                        *i,
+                        enemies.len()
+                    );
                 }
 
                 let mut bullets_to_delete: Vec<u32> = Vec::new();
                 for (i, b) in &mut state.bullets.iter_mut() {
                     if !paused {
-                        if let Some(death_reason) = b.animate_bullet(&mut enemies, &mut state.player) {
+                        if let Some(death_reason) =
+                            b.animate_bullet(&mut enemies, &mut state.player)
+                        {
                             bullets_to_delete.push(*i);
 
                             let base = b.get_base();
@@ -356,7 +414,8 @@ fn main() -> Result<(), ShooterError> {
                             }
 
                             if let DeathReason::HitPlayer = death_reason {
-                                if state.player.invtime == 0 && !game_over && 0 < state.player.lives {
+                                if state.player.invtime == 0 && !game_over && 0 < state.player.lives
+                                {
                                     state.player.lives -= 1;
                                     if state.player.lives == 0 {
                                         game_over = true;
@@ -478,7 +537,11 @@ fn main() -> Result<(), ShooterError> {
                 draw_text(&format!("Score: {}", state.player.score), 1);
                 draw_text(&format!("Kills: {}", state.player.kills), 2);
                 draw_text(
-                    &format!("Power: {}, Level: {}", state.player.power, state.player.power_level()),
+                    &format!(
+                        "Power: {}, Level: {}",
+                        state.player.power,
+                        state.player.power_level()
+                    ),
                     3,
                 );
                 draw_text(

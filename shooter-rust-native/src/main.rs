@@ -27,8 +27,6 @@ fn main() -> Result<(), ShooterError> {
 
     let mut state = ShooterState::new(None);
 
-    let mut items = Vec::<Item>::new();
-
     let mut tent = Vec::<TempEntity>::new();
 
     let mut rng = thread_rng();
@@ -321,7 +319,7 @@ fn main() -> Result<(), ShooterError> {
 
                 let mut to_delete: Vec<usize> = Vec::new();
 
-                for (i, e) in &mut ((&mut items).iter_mut().enumerate()) {
+                for (i, e) in &mut ((&mut state.items).iter_mut().enumerate()) {
                     if !paused {
                         if let Some(_) = e.animate(&mut state.player) {
                             to_delete.push(i);
@@ -332,12 +330,12 @@ fn main() -> Result<(), ShooterError> {
                 }
 
                 for i in to_delete.iter().rev() {
-                    let dead = items.remove(*i);
+                    let dead = state.items.remove(*i);
                     println!(
                         "Deleted Item id={}: {} / {}",
                         dead.get_base().id,
                         *i,
-                        items.len()
+                        state.items.len()
                     );
                 }
 

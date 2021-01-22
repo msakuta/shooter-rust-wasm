@@ -11,6 +11,8 @@ use game_logic::{
     consts::*,
     entity::{Assets, Entity, ShaderBundle, TempEntity, Weapon},
     js_str,
+    vertex_buffer_data,
+    enable_buffer,
 };
 
 #[wasm_bindgen]
@@ -654,26 +656,4 @@ pub fn link_program(
             .get_program_info_log(&program)
             .unwrap_or_else(|| String::from("Unknown error creating program object")))
     }
-}
-
-fn vertex_buffer_data(context: &GL, vertices: &[f32]) {
-    // Note that `Float32Array::view` is somewhat dangerous (hence the
-    // `unsafe`!). This is creating a raw view into our module's
-    // `WebAssembly.Memory` buffer, but if we allocate more pages for ourself
-    // (aka do a memory allocation in Rust) it'll cause the buffer to change,
-    // causing the `Float32Array` to be invalid.
-    //
-    // As a result, after `Float32Array::view` we have to be very careful not to
-    // do any memory allocations before it's dropped.
-    unsafe {
-        let vert_array = js_sys::Float32Array::view(vertices);
-
-        context.buffer_data_with_array_buffer_view(GL::ARRAY_BUFFER, &vert_array, GL::STATIC_DRAW);
-    };
-}
-
-fn enable_buffer(gl: &GL, buffer: &Option<WebGlBuffer>, elements: i32, vertex_position: u32) {
-    gl.bind_buffer(GL::ARRAY_BUFFER, buffer.as_ref());
-    gl.vertex_attrib_pointer_with_i32(vertex_position, elements, GL::FLOAT, false, 0, 0);
-    gl.enable_vertex_attrib_array(vertex_position);
 }

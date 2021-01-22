@@ -711,7 +711,7 @@ fn load_texture(gl: &GL, url: &str) -> Result<Rc<WebGlTexture>, JsValue> {
 }
 
 #[cfg(feature = "webgl")]
-fn vertex_buffer_data(context: &GL, vertices: &[f32]) {
+pub fn vertex_buffer_data(context: &GL, vertices: &[f32]) {
     // Note that `Float32Array::view` is somewhat dangerous (hence the
     // `unsafe`!). This is creating a raw view into our module's
     // `WebAssembly.Memory` buffer, but if we allocate more pages for ourself
@@ -728,7 +728,7 @@ fn vertex_buffer_data(context: &GL, vertices: &[f32]) {
 }
 
 #[cfg(feature = "webgl")]
-fn enable_buffer(gl: &GL, buffer: &Option<WebGlBuffer>, elements: i32, vertex_position: u32) {
+pub fn enable_buffer(gl: &GL, buffer: &Option<WebGlBuffer>, elements: i32, vertex_position: u32) {
     gl.bind_buffer(GL::ARRAY_BUFFER, buffer.as_ref());
     gl.vertex_attrib_pointer_with_i32(vertex_position, elements, GL::FLOAT, false, 0, 0);
     gl.enable_vertex_attrib_array(vertex_position);

@@ -2,7 +2,7 @@
 use piston_window::{
     draw_state::Blend,
     math::{rotate_radians, scale, translate},
-    *,
+    G2d, *,
 };
 #[cfg(feature = "webgl")]
 use std::rc::Rc;
@@ -420,12 +420,7 @@ impl ShooterState {
     }
 
     #[cfg(all(not(feature = "webgl"), feature = "piston"))]
-    pub fn draw_items(
-        &self,
-        context: &Context,
-        graphics: &mut piston_window::G2d,
-        assets: &Assets,
-    ) {
+    pub fn draw_items(&self, context: &Context, graphics: &mut G2d, assets: &Assets) {
         for item in &self.items {
             item.draw(&context, graphics, &assets);
         }
@@ -464,12 +459,7 @@ impl ShooterState {
     }
 
     #[cfg(all(not(feature = "webgl"), feature = "piston"))]
-    pub fn draw_enemies(
-        &self,
-        context: &Context,
-        graphics: &mut piston_window::G2d,
-        assets: &Assets,
-    ) {
+    pub fn draw_enemies(&self, context: &Context, graphics: &mut G2d, assets: &Assets) {
         for enemy in &self.enemies {
             enemy.draw(&context, graphics, &assets);
         }
@@ -522,6 +512,72 @@ impl ShooterState {
                 *i,
                 self.enemies.len()
             );
+        }
+    }
+
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub fn draw_bullets(&self, context: &Context, graphics: &mut G2d, assets: &Assets) {
+        for (_, b) in &self.bullets {
+            b.draw(&context, graphics, &assets);
+        }
+    }
+
+    pub fn animate_bullets(
+        &mut self,
+        add_tent: &mut impl FnMut(bool, &[f64; 2], &mut ShooterState),
+    ) {
+        if self.paused {
+            return;
+        }
+        let mut bullets_to_delete: Vec<u32> = Vec::new();
+        let mut bullets = std::mem::take(&mut self.bullets);
+        for (i, b) in &mut bullets {
+            if !self.paused {
+                if let Some(death_reason) = b.animate_bullet(&mut self.enemies, &mut self.player) {
+                    bullets_to_delete.push(*i);
+
+                    let base = b.get_base();
+
+                    match death_reason {
+                        DeathReason::Killed | DeathReason::HitPlayer => add_tent(
+                            if let Projectile::Missile { .. } = b {
+                                false
+                            } else {
+                                true
+                            },
+                            &base.0.pos,
+                            self,
+                        ),
+                        _ => {}
+                    }
+
+                    if let DeathReason::HitPlayer = death_reason {
+                        if self.player.invtime == 0 && !self.game_over && 0 < self.player.lives {
+                            self.player.lives -= 1;
+                            if self.player.lives == 0 {
+                                self.game_over = true;
+                            } else {
+                                self.player.invtime = PLAYER_INVINCIBLE_TIME;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.bullets = bullets;
+
+        for i in bullets_to_delete.iter() {
+            if let Some(b) = self.bullets.remove(i) {
+                println!(
+                    "Deleted {} id={}, {} / {}",
+                    b.get_type(),
+                    b.get_base().0.id,
+                    *i,
+                    self.bullets.len()
+                );
+            } else {
+                debug_assert!(false, "All keys must exist in bullets");
+            }
         }
     }
 }

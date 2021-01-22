@@ -220,65 +220,9 @@ fn main() -> Result<(), ShooterError> {
 
                 state.animate_enemies();
 
-                let mut bullets_to_delete: Vec<u32> = Vec::new();
-                let mut bullets = std::mem::take(&mut state.bullets);
-                for (i, b) in &mut bullets {
-                    if !state.paused {
-                        if let Some(death_reason) =
-                            b.animate_bullet(&mut state.enemies, &mut state.player)
-                        {
-                            bullets_to_delete.push(*i);
+                state.draw_bullets(&context, graphics, &assets);
 
-                            let base = b.get_base();
-
-                            match death_reason {
-                                DeathReason::Killed | DeathReason::HitPlayer => add_tent(
-                                    if let Projectile::Missile { .. } = b {
-                                        false
-                                    } else {
-                                        true
-                                    },
-                                    &base.0.pos,
-                                    &mut state,
-                                ),
-                                _ => {}
-                            }
-
-                            if let DeathReason::HitPlayer = death_reason {
-                                if state.player.invtime == 0
-                                    && !state.game_over
-                                    && 0 < state.player.lives
-                                {
-                                    state.player.lives -= 1;
-                                    if state.player.lives == 0 {
-                                        state.game_over = true;
-                                    } else {
-                                        state.player.invtime = PLAYER_INVINCIBLE_TIME;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    b.draw(&context, graphics, &assets);
-                }
-                state.bullets = bullets;
-
-                for i in bullets_to_delete.iter() {
-                    if let Some(b) = state.bullets.remove(i) {
-                        println!(
-                            "Deleted {} id={}, {} / {}",
-                            b.get_type(),
-                            b.get_base().0.id,
-                            *i,
-                            state.bullets.len()
-                        );
-                    } else {
-                        debug_assert!(false, "All keys must exist in bullets");
-                    }
-                }
-
-                bullets_to_delete.clear();
+                state.animate_bullets(&mut add_tent);
 
                 let mut to_delete = vec![];
                 for (i, e) in &mut ((&mut tent).iter_mut().enumerate()) {

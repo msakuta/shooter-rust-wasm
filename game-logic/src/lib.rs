@@ -172,8 +172,8 @@ impl ShooterState {
     ) -> u32 {
         // Random walk with momentum
         fn next_lightning(rng: &mut Xor128, a: &mut [f64; 4]) {
-            a[2] += LIGHTNING_ACCEL * (rng.next() - 0.5) - a[2] * LIGHTNING_FEEDBACK;
-            a[3] += LIGHTNING_ACCEL * (rng.next() - 0.5) - a[3] * LIGHTNING_FEEDBACK;
+            a[2] += LIGHTNING_ACCEL * (rng.gen() - 0.5) - a[2] * LIGHTNING_FEEDBACK;
+            a[3] += LIGHTNING_ACCEL * (rng.gen() - 0.5) - a[3] * LIGHTNING_FEEDBACK;
             a[0] += a[2];
             a[1] += a[3];
         }
@@ -286,7 +286,7 @@ impl ShooterState {
                                 return false;
                             }
                         }
-                        return true;
+                        true
                     },
                 );
             });
@@ -342,7 +342,7 @@ impl ShooterState {
                         },
                         if spiral_count < 4 { 4 } else { 0 },
                     ];
-                    let allweights = weights.iter().fold(0, |sum, x| sum + x);
+                    let allweights = weights.iter().sum();
                     let accum = {
                         let mut accum = [0; 4];
                         let mut accumulator = 0;
@@ -361,21 +361,21 @@ impl ShooterState {
                                 // top
                                 (
                                     [rng.gen_rangef(0., WIDTH as f64), 0.],
-                                    [rng.next() - 0.5, rng.next() * 0.5],
+                                    [rng.gen() - 0.5, rng.gen() * 0.5],
                                 )
                             }
                             1 => {
                                 // left
                                 (
                                     [0., rng.gen_rangef(0., WIDTH as f64)],
-                                    [rng.next() * 0.5, rng.next() - 0.5],
+                                    [rng.gen() * 0.5, rng.gen() - 0.5],
                                 )
                             }
                             2 => {
                                 // right
                                 (
                                     [WIDTH as f64, rng.gen_rangef(0., WIDTH as f64)],
-                                    [-rng.next() * 0.5, rng.next() - 0.5],
+                                    [-rng.gen() * 0.5, rng.gen() - 0.5],
                                 )
                             }
                             _ => panic!("RNG returned out of range"),
@@ -424,11 +424,9 @@ impl ShooterState {
         }
         let mut to_delete = vec![];
         for (i, e) in &mut ((&mut self.items).iter_mut().enumerate()) {
-            if !self.paused {
-                if let Some(_) = e.animate(&mut self.player) {
-                    to_delete.push(i);
-                    continue;
-                }
+            if !self.paused && (e.animate(&mut self.player).is_some()) {
+                to_delete.push(i);
+                continue;
             }
         }
 
@@ -468,11 +466,7 @@ impl ShooterState {
                 let killed = {
                     if let Some(death_reason) = enemy.animate(self) {
                         to_delete.push(i);
-                        if let DeathReason::Killed = death_reason {
-                            true
-                        } else {
-                            false
-                        }
+                        matches!(death_reason, DeathReason::Killed)
                     } else {
                         false
                     }
@@ -509,7 +503,7 @@ impl ShooterState {
 
     #[cfg(feature = "webgl")]
     pub fn draw_bullets(&self, gl: &GL) {
-        for (_, b) in &self.bullets {
+        for b in self.bullets.values() {
             b.draw(gl, &self.assets);
         }
     }
@@ -540,15 +534,9 @@ impl ShooterState {
                     let base = b.get_base();
 
                     match death_reason {
-                        DeathReason::Killed | DeathReason::HitPlayer => add_tent(
-                            if let Projectile::Missile { .. } = b {
-                                false
-                            } else {
-                                true
-                            },
-                            &base.0.pos,
-                            self,
-                        ),
+                        DeathReason::Killed | DeathReason::HitPlayer => {
+                            add_tent(matches!(b, Projectile::Missile { .. }), &base.0.pos, self)
+                        }
                         _ => {}
                     }
 
@@ -605,11 +593,9 @@ impl ShooterState {
         }
         let mut to_delete = vec![];
         for (i, e) in &mut ((&mut self.tent).iter_mut().enumerate()) {
-            if !self.paused {
-                if let Some(_) = e.animate_temp() {
-                    to_delete.push(i);
-                    continue;
-                }
+            if !self.paused && e.animate_temp().is_some() {
+                to_delete.push(i);
+                continue;
             }
         }
 
@@ -626,26 +612,24 @@ impl ShooterState {
 // When the image finished loading copy it into the texture.
 //
 fn load_texture(gl: &GL, url: &str) -> Result<Rc<WebGlTexture>, JsValue> {
-    fn window() -> web_sys::Window {
-        web_sys::window().expect("no global `window` exists")
+    fn window() -> Option<web_sys::Window> {
+        web_sys::window()
     }
 
-    fn document() -> web_sys::Document {
-        window().document().unwrap()
+    fn document() -> Option<web_sys::Document> {
+        window()?.document()
     }
 
-    fn get_context() -> GL {
-        let document = document();
+    fn get_context() -> Result<GL, JsValue> {
+        let document = document().ok_or_else(|| js_str!("no document!"))?;
         let canvas = document.get_element_by_id("canvas").unwrap();
         let canvas: web_sys::HtmlCanvasElement =
             canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap();
 
-        canvas
-            .get_context("webgl")
-            .unwrap()
-            .unwrap()
-            .dyn_into::<GL>()
-            .unwrap()
+        Ok(canvas
+            .get_context("webgl")?
+            .ok_or_else(|| js_str!("no context"))?
+            .dyn_into::<GL>()?)
     }
 
     fn is_power_of_2(value: u32) -> bool {
@@ -678,21 +662,20 @@ fn load_texture(gl: &GL, url: &str) -> Result<Rc<WebGlTexture>, JsValue> {
         src_format,
         src_type,
         Some(&pixel),
-    )
-    .unwrap();
+    )?;
     gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_S, GL::REPEAT as i32);
     gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::REPEAT as i32);
     gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::LINEAR as i32);
 
-    let image = Rc::new(HtmlImageElement::new().unwrap());
+    let image = Rc::new(HtmlImageElement::new()?);
     let url_str = url.to_owned();
     let image_clone = image.clone();
     let texture_clone = texture.clone();
-    let callback = Closure::wrap(Box::new(move || {
+    let callback = Closure::wrap(Box::new(move || -> Result<(), JsValue> {
         console_log!("loaded image: {}", url_str);
         // web_sys::console::log_1(Date::new_0().to_locale_string("en-GB", &JsValue::undefined()));
 
-        let gl = get_context();
+        let gl = get_context()?;
 
         gl.bind_texture(GL::TEXTURE_2D, Some(&*texture_clone));
         gl.tex_image_2d_with_u32_and_u32_and_image(
@@ -702,8 +685,7 @@ fn load_texture(gl: &GL, url: &str) -> Result<Rc<WebGlTexture>, JsValue> {
             src_format,
             src_type,
             &image_clone,
-        )
-        .unwrap();
+        )?;
 
         // WebGL1 has different requirements for power of 2 images
         // vs non power of 2 images so check if the image is a
@@ -718,7 +700,8 @@ fn load_texture(gl: &GL, url: &str) -> Result<Rc<WebGlTexture>, JsValue> {
             gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::CLAMP_TO_EDGE as i32);
             gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::LINEAR as i32);
         }
-    }) as Box<dyn FnMut()>);
+        Ok(())
+    }) as Box<dyn FnMut() -> Result<(), JsValue>>);
     image.set_onload(Some(callback.as_ref().unchecked_ref()));
     image.set_src(url);
 
@@ -728,7 +711,7 @@ fn load_texture(gl: &GL, url: &str) -> Result<Rc<WebGlTexture>, JsValue> {
 }
 
 #[cfg(feature = "webgl")]
-fn vertex_buffer_data(context: &GL, vertices: &[f32]) -> Result<(), JsValue> {
+fn vertex_buffer_data(context: &GL, vertices: &[f32]) {
     // Note that `Float32Array::view` is somewhat dangerous (hence the
     // `unsafe`!). This is creating a raw view into our module's
     // `WebAssembly.Memory` buffer, but if we allocate more pages for ourself
@@ -742,7 +725,6 @@ fn vertex_buffer_data(context: &GL, vertices: &[f32]) -> Result<(), JsValue> {
 
         context.buffer_data_with_array_buffer_view(GL::ARRAY_BUFFER, &vert_array, GL::STATIC_DRAW);
     };
-    Ok(())
 }
 
 #[cfg(feature = "webgl")]

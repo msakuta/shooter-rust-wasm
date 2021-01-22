@@ -67,8 +67,8 @@ impl Entity {
         *id_gen += 1;
         Self {
             id: *id_gen,
-            pos: pos,
-            velo: velo,
+            pos,
+            velo,
             health: 1,
             rotation: 0.,
             angular_velocity: 0.,
@@ -97,9 +97,7 @@ impl Entity {
     /// Otherwise returns Some(reason) where reason is DeathReason.
     pub fn animate(&mut self) -> Option<DeathReason> {
         let pos = &mut self.pos;
-        for i in 0..2 {
-            pos[i] += self.velo[i];
-        }
+        *pos = vec2_add(*pos, self.velo);
         self.rotation += self.angular_velocity;
         if self.health <= 0 {
             Some(DeathReason::Killed)
@@ -130,7 +128,7 @@ impl Entity {
         let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], 0.));
         let scale_mat = Matrix4::from_scale(scale.unwrap_or(1.));
         let rotation = Matrix4::from_angle_z(Rad(self.rotation as f64));
-        let transform = assets.world_transform * &translation * &scale_mat * &rotation;
+        let transform = assets.world_transform * translation * scale_mat * rotation;
         context.uniform_matrix4fv_with_f32_array(
             shader.transform_loc.as_ref(),
             false,
@@ -194,9 +192,9 @@ pub enum Weapon {
     Lightning,
 }
 
-impl Weapon {
-    pub fn to_string(&self) -> String {
-        format!("{:?}", self)
+impl std::fmt::Display for Weapon {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
@@ -442,7 +440,7 @@ impl Assets {
 
         Ok(Assets {
             world_transform: Matrix4::from_translation(Vector3::new(-1., 1., 0.))
-                * &Matrix4::from_nonuniform_scale(2. / FWIDTH, -2. / FHEIGHT, 1.),
+                * Matrix4::from_nonuniform_scale(2. / FWIDTH, -2. / FHEIGHT, 1.),
             enemy_tex: load_texture_local("enemy")?,
             boss_tex: load_texture_local("boss")?,
             shield_tex: load_texture_local("shield")?,
@@ -596,9 +594,7 @@ impl Enemy {
     }
 
     pub fn total_health(&self) -> i32 {
-        match self {
-            _ => self.get_base().health,
-        }
+        self.get_base().health
     }
 
     pub fn drop_item(&self, ent: Entity) -> Item {
@@ -619,7 +615,7 @@ impl Enemy {
         if x == 0 {
             use std::f64::consts::PI;
             let bullet_count = 10;
-            let phase_offset = rng.next() * PI;
+            let phase_offset = rng.gen() * PI;
             for i in 0..bullet_count {
                 let angle = 2. * PI * i as f64 / bullet_count as f64 + phase_offset;
                 let eb = create_fn(BulletBase(
@@ -641,14 +637,14 @@ impl Enemy {
                 &mut state.id_gen,
                 &mut state.bullets,
                 &mut state.rng,
-                |base| Projectile::new_phase(base),
+                Projectile::new_phase,
             );
         } else if let Enemy::SpiralEnemy(_) = self {
             self.gen_bullets(
                 &mut state.id_gen,
                 &mut state.bullets,
                 &mut state.rng,
-                |base| Projectile::new_spiral(base),
+                Projectile::new_spiral,
             );
         } else {
             let x: u32 = state.rng.gen_range(0, 64);
@@ -656,7 +652,7 @@ impl Enemy {
                 let eb = Projectile::EnemyBullet(BulletBase(Entity::new(
                     &mut state.id_gen,
                     self.get_base().pos,
-                    [state.rng.next() - 0.5, state.rng.next() - 0.5],
+                    [state.rng.gen() - 0.5, state.rng.gen() - 0.5],
                 )));
                 state.bullets.insert(eb.get_id(), eb);
             }
@@ -770,10 +766,7 @@ impl Enemy {
     }
 
     pub fn is_boss(&self) -> bool {
-        match self {
-            Enemy::Boss(_) | Enemy::ShieldedBoss(_) => true,
-            _ => false,
-        }
+        matches!(self, Enemy::Boss(_) | Enemy::ShieldedBoss(_))
     }
 
     pub fn new_spiral(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Enemy {
@@ -829,7 +822,7 @@ impl Projectile {
         }
     }
 
-    pub fn get_base<'b>(&'b self) -> &'b BulletBase {
+    pub fn get_base(&self) -> &BulletBase {
         match &self {
             &Projectile::Bullet(base) | &Projectile::EnemyBullet(base) => base,
             &Projectile::PhaseBullet { base, .. } | &Projectile::SpiralBullet { base, .. } => base,
@@ -963,7 +956,7 @@ impl Projectile {
                 }
                 trail.push(base.0.pos);
                 let res = Self::animate_player_bullet(base, enemies, player);
-                if let Some(_) = res {
+                if res.is_some() {
                     if let Some(target_enemy) = enemies.iter_mut().find(|e| e.get_id() == *target) {
                         target_enemy.add_predicted_damage(-MISSILE_DAMAGE);
                         println!(
@@ -1027,7 +1020,7 @@ impl Projectile {
                 },
             );
 
-            vertex_buffer_data(gl, &vertices).unwrap();
+            vertex_buffer_data(gl, &vertices);
 
             gl.uniform_matrix4fv_with_f32_array(
                 shader.transform_loc.as_ref(),
@@ -1044,7 +1037,7 @@ impl Projectile {
             gl.draw_arrays(GL::TRIANGLE_STRIP, 0, (vertices.len() / 4) as i32);
 
             // Switch back to sprite shader and buffer
-            gl.use_program(assets.sprite_shader.as_ref().and_then(|o| Some(&o.program)));
+            gl.use_program(assets.sprite_shader.as_ref().map(|o| &o.program));
             enable_buffer(gl, &assets.rect_buffer, 2, shader.vertex_position);
         }
         self.get_base().0.draw_tex(
@@ -1138,7 +1131,7 @@ impl Item {
     pub fn animate(&mut self, player: &mut Player) -> Option<DeathReason> {
         match self {
             Item::PowerUp(ent) | Item::PowerUp10(ent) => {
-                if let Some(_) = ent.hits_player(&player.base) {
+                if ent.hits_player(&player.base).is_some() {
                     player.power += self.power_value();
                     return Some(DeathReason::Killed);
                 }
@@ -1190,7 +1183,7 @@ impl TempEntity {
         let frame = self.max_frames - (self.base.health as u32 / self.playback_rate) as u32;
         // let image   = Image::new().rect([0f64, 0f64, self.width as f64, tex2.get_height() as f64])
         //     .src_rect([frame as f64 * self.width as f64, 0., self.width as f64, tex2.get_height() as f64]);
-        let transform = assets.world_transform * &translation * &rotation * &scale;
+        let transform = assets.world_transform * translation * rotation * scale;
         context.uniform_matrix4fv_with_f32_array(
             shader.transform_loc.as_ref(),
             false,

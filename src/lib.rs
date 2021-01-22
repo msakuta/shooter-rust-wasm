@@ -115,7 +115,7 @@ impl ShooterState {
                         }
                     }
                 };
-                self.0.player.weapon = next_weapon.clone();
+                self.0.player.weapon = *next_weapon;
                 println!("Weapon switched: {}", name);
             }
             _ => (),
@@ -249,7 +249,7 @@ impl ShooterState {
         self.0.assets.rect_buffer = Some(context.create_buffer().ok_or("failed to create buffer")?);
         context.bind_buffer(GL::ARRAY_BUFFER, self.0.assets.rect_buffer.as_ref());
         let rect_vertices: [f32; 8] = [1., 1., -1., 1., -1., -1., 1., -1.];
-        vertex_buffer_data(&context, &rect_vertices)?;
+        vertex_buffer_data(&context, &rect_vertices);
 
         context.clear_color(0.0, 0.0, 0.5, 1.0);
 
@@ -280,12 +280,12 @@ impl ShooterState {
             let mut ent = Entity::new(
                 &mut state.id_gen,
                 [
-                    pos[0] + 4. * (state.rng.next() - 0.5),
-                    pos[1] + 4. * (state.rng.next() - 0.5),
+                    pos[0] + 4. * (state.rng.gen() - 0.5),
+                    pos[1] + 4. * (state.rng.gen() - 0.5),
                 ],
                 [0., 0.],
             )
-            .rotation(state.rng.next() as f32 * 2. * std::f32::consts::PI);
+            .rotation(state.rng.gen() as f32 * 2. * std::f32::consts::PI);
             let (playback_rate, max_frames) = if is_bullet { (2, 8) } else { (4, 6) };
             ent = ent.health((max_frames * playback_rate) as i32);
 
@@ -372,7 +372,7 @@ impl ShooterState {
                         [right, 0., 1., 1.],
                     ];
 
-                    vertex_buffer_data(gl, &vertices.flat()).unwrap();
+                    vertex_buffer_data(gl, &vertices.flat());
 
                     gl.uniform_matrix4fv_with_f32_array(
                         shader.transform_loc.as_ref(),
@@ -417,7 +417,7 @@ impl ShooterState {
                                             return false;
                                         }
                                     }
-                                    return true;
+                                    true
                                 },
                             );
                             let hit = length != LIGHTNING_VERTICES;
@@ -474,7 +474,7 @@ impl ShooterState {
                                 },
                             );
 
-                            vertex_buffer_data(gl, &vertices).unwrap();
+                            vertex_buffer_data(gl, &vertices);
 
                             let shader = state.assets.trail_shader.as_ref().unwrap();
                             gl.uniform_matrix4fv_with_f32_array(
@@ -567,15 +567,13 @@ impl ShooterState {
 
         load_identity(self);
 
-        if !self.0.game_over {
-            if self.0.player.invtime == 0 || self.0.disptime % 2 == 0 {
-                self.0.player.base.draw_tex(
-                    &self.0.assets,
-                    &context,
-                    &self.0.assets.player_texture,
-                    Some(PLAYER_SIZE),
-                );
-            }
+        if !self.0.game_over && (self.0.player.invtime == 0 || self.0.disptime % 2 == 0) {
+            self.0.player.base.draw_tex(
+                &self.0.assets,
+                &context,
+                &self.0.assets.player_texture,
+                Some(PLAYER_SIZE),
+            );
         }
 
         fn set_text(id: &str, text: &str) {
@@ -658,7 +656,7 @@ pub fn link_program(
     }
 }
 
-fn vertex_buffer_data(context: &GL, vertices: &[f32]) -> Result<(), JsValue> {
+fn vertex_buffer_data(context: &GL, vertices: &[f32]) {
     // Note that `Float32Array::view` is somewhat dangerous (hence the
     // `unsafe`!). This is creating a raw view into our module's
     // `WebAssembly.Memory` buffer, but if we allocate more pages for ourself
@@ -672,7 +670,6 @@ fn vertex_buffer_data(context: &GL, vertices: &[f32]) -> Result<(), JsValue> {
 
         context.buffer_data_with_array_buffer_view(GL::ARRAY_BUFFER, &vert_array, GL::STATIC_DRAW);
     };
-    Ok(())
 }
 
 fn enable_buffer(gl: &GL, buffer: &Option<WebGlBuffer>, elements: i32, vertex_position: u32) {

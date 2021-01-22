@@ -78,12 +78,12 @@ fn main() -> Result<(), ShooterError> {
                     let mut ent = Entity::new(
                         &mut state.id_gen,
                         [
-                            pos[0] + 4. * (state.rng.next() - 0.5),
-                            pos[1] + 4. * (state.rng.next() - 0.5),
+                            pos[0] + 4. * (state.rng.gen() - 0.5),
+                            pos[1] + 4. * (state.rng.gen() - 0.5),
                         ],
                         [0., 0.],
                     )
-                    .rotation(state.rng.next() as f32 * 2. * std::f32::consts::PI);
+                    .rotation(state.rng.gen() as f32 * 2. * std::f32::consts::PI);
                     let (playback_rate, max_frames) = if is_bullet { (2, 8) } else { (4, 6) };
                     ent = ent.health((max_frames * playback_rate) as i32);
 
@@ -187,13 +187,11 @@ fn main() -> Result<(), ShooterError> {
 
                 let wave_period = state.gen_enemies();
 
-                if !state.game_over {
-                    if state.player.invtime == 0 || disptime % 2 == 0 {
-                        state
-                            .player
-                            .base
-                            .draw_tex(&context, graphics, &assets.player_tex, None);
-                    }
+                if !state.game_over && (state.player.invtime == 0 || disptime % 2 == 0) {
+                    state
+                        .player
+                        .base
+                        .draw_tex(&context, graphics, &assets.player_tex, None);
                 }
 
                 if !state.paused {

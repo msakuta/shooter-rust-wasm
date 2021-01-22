@@ -9,10 +9,9 @@ use web_sys::{WebGlProgram, WebGlRenderingContext as GL, WebGlShader};
 use game_logic::{
     console_log,
     consts::*,
-    entity::{Assets, Entity, ShaderBundle, TempEntity, Weapon},
-    js_str,
-    vertex_buffer_data,
     enable_buffer,
+    entity::{Assets, Entity, ShaderBundle, TempEntity, Weapon},
+    js_str, vertex_buffer_data,
 };
 
 #[wasm_bindgen]
@@ -348,8 +347,7 @@ impl ShooterState {
                 // Use the same seed twice to reproduce random sequence
                 let seed = self.0.rng.nexti();
 
-                self.0
-                    .try_shoot(self.0.shoot_pressed, &weapon, seed, &mut add_tent);
+                self.0.try_shoot(self.0.shoot_pressed, seed, &mut add_tent);
 
                 if Weapon::Light == weapon {
                     let gl = &context;

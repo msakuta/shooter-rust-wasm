@@ -23,8 +23,6 @@ fn main() -> Result<(), ShooterError> {
     let [mut key_up, mut key_down, mut key_left, mut key_right, mut key_shoot, mut key_change, mut key_pause] =
         [false; 7];
 
-    let mut weapon = Weapon::Bullet;
-
     fn limit_viewport(viewport: &Viewport, ratio: f64, wwidth: u32, wheight: u32) -> Viewport {
         let vp_ratio = (viewport.rect[2] - viewport.rect[0]) as f64
             / (viewport.rect[3] - viewport.rect[0]) as f64;
@@ -114,8 +112,9 @@ fn main() -> Result<(), ShooterError> {
 
                     // Use the same seed twice to reproduce random sequence
                     let seed = state.rng.nexti();
+                    let weapon = state.player.weapon;
 
-                    state.try_shoot(key_shoot, &weapon, seed, &mut add_tent);
+                    state.try_shoot(key_shoot, seed, &mut add_tent);
 
                     if Weapon::Light == weapon && key_shoot {
                         // Apparently Piston doesn't allow vertex colored rectangle, we need to
@@ -326,7 +325,7 @@ fn main() -> Result<(), ShooterError> {
                     -(assets.sphere_tex.get_height() as f64 / 2.),
                 ]);
                 for (i, v) in WEAPON_SET.iter().enumerate() {
-                    let sphere_image = if v.1 == weapon {
+                    let sphere_image = if v.1 == state.player.weapon {
                         Image::new_color([v.2[0], v.2[1], v.2[2], 1.])
                     } else {
                         Image::new_color([0.5 * v.2[0], 0.5 * v.2[1], 0.5 * v.2[2], 1.])
@@ -344,7 +343,7 @@ fn main() -> Result<(), ShooterError> {
                         graphics,
                     );
                     let weapons_image = sphere_image
-                        .color(if v.1 == weapon {
+                        .color(if v.1 == state.player.weapon {
                             [1., 1., 1., 1.]
                         } else {
                             [0.5, 0.5, 0.5, 1.]
@@ -393,7 +392,7 @@ fn main() -> Result<(), ShooterError> {
                                     ("Missile", Missile),
                                     ("Lightning", Lightning),
                                 ];
-                                let (name, next_weapon) = match weapon {
+                                let (name, next_weapon) = match state.player.weapon {
                                     Bullet => {
                                         if key == Key::X {
                                             &weapon_names[1]
@@ -423,7 +422,7 @@ fn main() -> Result<(), ShooterError> {
                                         }
                                     }
                                 };
-                                weapon = *next_weapon;
+                                state.player.weapon = *next_weapon;
                                 println!("Weapon switched: {}", name);
                             }
                             key_change = tf;

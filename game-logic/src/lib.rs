@@ -210,13 +210,13 @@ impl ShooterState {
     pub fn try_shoot(
         &mut self,
         key_shoot: bool,
-        weapon: &Weapon,
         seed: u32,
         add_tent: &mut impl FnMut(bool, &[f64; 2], &mut ShooterState),
     ) {
+        let weapon = self.player.weapon;
         let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
 
-        if Weapon::Bullet == *weapon || Weapon::Missile == *weapon {
+        if Weapon::Bullet == weapon || Weapon::Missile == weapon {
             let player = &mut self.player;
             if key_shoot && player.cooldown == 0 {
                 let level = player.power_level() as i32;
@@ -249,7 +249,7 @@ impl ShooterState {
                     }
                 }
             }
-        } else if Weapon::Light == *weapon && key_shoot {
+        } else if Weapon::Light == weapon && key_shoot {
             let player = &self.player;
             let level = player.power_level() as i32;
             let beam_rect = [
@@ -267,7 +267,7 @@ impl ShooterState {
                 }
             }
             self.enemies = enemies;
-        } else if Weapon::Lightning == *weapon && key_shoot {
+        } else if Weapon::Lightning == weapon && key_shoot {
             self.lightning(seed, &mut |state, seed| {
                 state.lightning_branch(
                     seed,
@@ -535,7 +535,7 @@ impl ShooterState {
 
                     match death_reason {
                         DeathReason::Killed | DeathReason::HitPlayer => {
-                            add_tent(matches!(b, Projectile::Missile { .. }), &base.0.pos, self)
+                            add_tent(!matches!(b, Projectile::Missile { .. }), &base.0.pos, self)
                         }
                         _ => {}
                     }

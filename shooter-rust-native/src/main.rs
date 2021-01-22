@@ -4,6 +4,7 @@ use game_logic::{
         Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Matrix, Player,
         Projectile, ShieldedBoss, TempEntity, Weapon,
     },
+    xor128::Xor128,
     ShooterError, ShooterState,
 };
 use piston_window::draw_state::Blend;
@@ -13,7 +14,6 @@ use rand::prelude::*;
 use std::collections::HashMap;
 
 fn main() -> Result<(), ShooterError> {
-    let mut time = 0;
     let mut disptime = 0;
     let opengl = OpenGL::V3_2;
     let mut window: PistonWindow =
@@ -93,16 +93,16 @@ fn main() -> Result<(), ShooterError> {
                 // borrows and needs to be released for each iteration.
                 // These variables are used in between multiple invocation of this closure.
                 let mut add_tent =
-                    |is_bullet, pos: &[f64; 2], id_gen: &mut u32, rng: &mut ThreadRng| {
+                    |is_bullet, pos: &[f64; 2], id_gen: &mut u32, rng: &mut Xor128| {
                         let mut ent = Entity::new(
                             id_gen,
                             [
-                                pos[0] + 4. * (rng.gen::<f64>() - 0.5),
-                                pos[1] + 4. * (rng.gen::<f64>() - 0.5),
+                                pos[0] + 4. * (rng.next() - 0.5),
+                                pos[1] + 4. * (rng.next() - 0.5),
                             ],
                             [0., 0.],
                         )
-                        .rotation(rng.gen::<f32>() * 2. * std::f32::consts::PI);
+                        .rotation(rng.next() as f32 * 2. * std::f32::consts::PI);
                         let (playback_rate, max_frames) = if is_bullet { (2, 8) } else { (4, 6) };
                         ent = ent.health((max_frames * playback_rate) as i32);
 
@@ -121,96 +121,58 @@ fn main() -> Result<(), ShooterError> {
 
                 if !game_over && !paused {
                     if key_up {
-                        player.move_up()
+                        state.player.move_up()
                     }
                     if key_down {
-                        player.move_down()
+                        state.player.move_down()
                     }
                     if key_left {
-                        player.move_left()
+                        state.player.move_left()
                     }
                     if key_right {
-                        player.move_right()
+                        state.player.move_right()
                     }
 
-                    let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
+                    // Use the same seed twice to reproduce random sequence
+                    let seed = state.rng.nexti();
 
-                    if Weapon::Bullet == weapon || Weapon::Missile == weapon {
-                        if key_shoot && player.cooldown == 0 {
-                            let level = player.power_level() as i32;
-                            player.cooldown += shoot_period;
-                            for i in -1 - level..2 + level {
-                                let speed = if let Weapon::Bullet = weapon {
-                                    BULLET_SPEED
-                                } else {
-                                    MISSILE_SPEED
-                                };
-                                let mut ent =
-                                    Entity::new(&mut state.id_gen, player.base.pos, [i as f64, -speed])
-                                        .rotation((i as f32).atan2(speed as f32));
-                                if let Weapon::Bullet = weapon {
-                                    shots_bullet += 1;
-                                    ent = ent.blend(Blend::Add);
-                                    state.bullets.insert(ent.id, Projectile::Bullet(BulletBase(ent)));
-                                } else {
-                                    shots_missile += 1;
-                                    ent = ent.health(5);
-                                    state.bullets.insert(
-                                        ent.id,
-                                        Projectile::Missile {
-                                            base: BulletBase(ent),
-                                            target: 0,
-                                            trail: vec![],
-                                        },
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    else if Weapon::Light == weapon && key_shoot {
+                    state.try_shoot(key_shoot, &weapon, seed, &mut enemies, &mut add_tent);
+
+                    if Weapon::Light == weapon && key_shoot {
                         // Apparently Piston doesn't allow vertex colored rectangle, we need to 
                         // draw multiple lines in order to display gradual change in color.
                         for i in -3..4 {
                             let f = (4. - (i as i32).abs() as f32) / 4.;
                             line([f / 3., 0.5 + f / 2., 1., f],
                                 1.,
-                                [player.base.pos[0] + i as f64, player.base.pos[1],
-                                player.base.pos[0] + i as f64, 0.],
+                                [state.player.base.pos[0] + i as f64, state.player.base.pos[1],
+                                state.player.base.pos[0] + i as f64, 0.],
                                 context.transform, graphics);
-                        }
-                        for enemy in enemies.iter_mut() {
-                            if enemy.test_hit([player.base.pos[0] - LIGHT_WIDTH, 0., player.base.pos[0] + LIGHT_WIDTH, player.base.pos[1]]) {
-                                add_tent(true, &enemy.get_base().pos, &mut state.id_gen, &mut rng);
-                                enemy.damage(1 + player.power_level() as i32);
-                            }
                         }
                     }
                     else if Weapon::Lightning == weapon && key_shoot {
                         let col = [1.,1.,1.,1.];
                         let col2 = [1.,0.5,1.,0.25];
-                        let nmax = std::cmp::min((player.power_level() + 1 + time % 2) / 2, 31);
+                        let nmax = std::cmp::min((state.player.power_level() as usize + 1 + state.time % 2) / 2, 31);
+                        let mut branch_rng = Xor128::new(seed);
 
                         // Random walk with momentum
-                        fn next_lightning(rng: &mut SmallRng, a: &mut [f64; 4]){
-                            a[2] += LIGHTNING_ACCEL * (rng.gen::<f64>() - 0.5) - a[2] * LIGHTNING_FEEDBACK;
-                            a[3] += LIGHTNING_ACCEL * (rng.gen::<f64>() - 0.5) - a[3] * LIGHTNING_FEEDBACK;
+                        fn next_lightning(rng: &mut Xor128, a: &mut [f64; 4]){
+                            a[2] += LIGHTNING_ACCEL * (rng.next() - 0.5) - a[2] * LIGHTNING_FEEDBACK;
+                            a[3] += LIGHTNING_ACCEL * (rng.next() - 0.5) - a[3] * LIGHTNING_FEEDBACK;
                             a[0] += a[2];
                             a[1] += a[3];
                         }
 
                         for _ in 0..nmax {
                             // Use the same seed twice to reproduce random sequence
-                            let seed = {
-                                let mut seed: <SmallRng as SeedableRng>::Seed = Default::default();
-                                rng.fill_bytes(&mut seed);
-                                seed
-                            };
+                            let seed = branch_rng.nexti();
 
                             // Lambda to call the same lightning sequence twice, first pass for detecting hit enemy
                             // and second pass for rendering.
-                            let lightning = |seed: &<SmallRng as SeedableRng>::Seed, length: u32, f: &mut dyn FnMut(&[f64; 4]) -> bool| {
-                                let mut rng2 = SmallRng::from_seed(*seed);
-                                let mut a = [player.base.pos[0], player.base.pos[1], 0., -16.];
+                            let lightning = |state: &ShooterState, seed: u32, length: u32, f: &mut dyn FnMut(&[f64; 4]) -> bool| {
+                                let mut rng2 = Xor128::new(seed);
+                                let mut a = [state.player.base.pos[0], state.player.base.pos[1], 0., -16.];
                                 for i in 0..length {
                                     let ox = a[0];
                                     let oy = a[1];
@@ -222,14 +184,11 @@ fn main() -> Result<(), ShooterError> {
                                 }
                                 length
                             };
-
-                            let length = lightning(&seed, LIGHTNING_VERTICES, &mut |segment: &[f64; 4]| {
+                            let length = lightning(&state, seed, LIGHTNING_VERTICES, &mut |segment: &[f64; 4]| {
                                 let b = [segment[2], segment[3]];
                                 for enemy in enemies.iter_mut() {
                                     let ebb = enemy.get_bb();
                                     if ebb[0] < b[0] + 4. && b[0] - 4. <= ebb[2] && ebb[1] < b[1] + 4. && b[1] - 4. <= ebb[3] {
-                                        enemy.damage(2 + rng.gen_range(0, 3));
-                                        add_tent(true, &b, &mut state.id_gen, &mut rng);
                                         return false;
                                     }
                                 }
@@ -237,23 +196,24 @@ fn main() -> Result<(), ShooterError> {
                             });
                             let hit = length != LIGHTNING_VERTICES;
 
-                            lightning(&seed, length, &mut |segment: &[f64; 4]| {
+                            lightning(&state, seed, length, &mut |segment: &[f64; 4]| {
                                 line(if hit { col } else { col2 }, if hit { 2. } else { 1. }, *segment, context.transform, graphics);
                                 true
                             });
                         }
                     }
-                    if player.cooldown < 1 {
-                        player.cooldown = 0;
+
+                    if state.player.cooldown < 1 {
+                        state.player.cooldown = 0;
                     } else {
-                        player.cooldown -= 1;
+                        state.player.cooldown -= 1;
                     }
                 }
 
                 let wave_period = 1024;
                 if !paused {
                     let dice = 256;
-                    let wave = time % wave_period;
+                    let wave = state.time % wave_period;
                     if wave < wave_period * 3 / 4 {
                         let [enemy_count, boss_count, shielded_boss_count, spiral_count]
                              = enemies.iter().fold([0; 4],
@@ -263,13 +223,13 @@ fn main() -> Result<(), ShooterError> {
                                 Enemy::ShieldedBoss(_) => {c[2] += 1; c},
                                 Enemy::SpiralEnemy(_) => {c[3] += 1; c},
                             });
-                        let gen_amount = player.difficulty_level() * 4 + 8;
+                        let gen_amount = state.player.difficulty_level() * 4 + 8;
                         let mut i = rng.gen_range(0, dice);
                         while i < gen_amount {
                             let weights = [
-                                if enemy_count < 128 { if player.score < 1024 { 64 } else { 16 } } else { 0 },
+                                if enemy_count < 128 { if state.player.score < 1024 { 64 } else { 16 } } else { 0 },
                                 if boss_count < 32 { 4 } else { 0 },
-                                if shielded_boss_count < 32 { std::cmp::min(4, player.difficulty_level()) } else { 0 },
+                                if shielded_boss_count < 32 { std::cmp::min(4, state.player.difficulty_level()) } else { 0 },
                                 if spiral_count < 4 { 4 } else { 0 }];
                             let allweights = weights.iter().fold(0, |sum, x| sum + x);
                             let accum = {
@@ -316,15 +276,15 @@ fn main() -> Result<(), ShooterError> {
                 }
 
                 if !game_over {
-                    if player.invtime == 0 || disptime % 2 == 0 {
-                        player
+                    if state.player.invtime == 0 || disptime % 2 == 0 {
+                        state.player
                             .base
                             .draw_tex(&context, graphics, &assets.player_tex, None);
                     }
                 }
 
                 if !paused {
-                    time += 1;
+                    state.time += 1;
                 }
                 disptime += 1;
 
@@ -332,7 +292,7 @@ fn main() -> Result<(), ShooterError> {
 
                 for (i, e) in &mut ((&mut items).iter_mut().enumerate()) {
                     if !paused {
-                        if let Some(_) = e.animate(&mut player) {
+                        if let Some(_) = e.animate(&mut state.player) {
                             to_delete.push(i);
                             continue;
                         }
@@ -356,8 +316,8 @@ fn main() -> Result<(), ShooterError> {
                             else {false}
                         };
                         if killed {
-                            player.kills += 1;
-                            player.score += if enemy.is_boss() { 10 } else { 1 };
+                            state.player.kills += 1;
+                            state.player.score += if enemy.is_boss() { 10 } else { 1 };
                             if rng.gen_range(0, 100) < 20 {
                                 let ent = Entity::new(&mut state.id_gen, enemy.get_base().pos, [0., 1.]);
                                 items.push(enemy.drop_item(ent));
@@ -382,7 +342,7 @@ fn main() -> Result<(), ShooterError> {
                 let mut bullets_to_delete: Vec<u32> = Vec::new();
                 for (i, b) in &mut state.bullets.iter_mut() {
                     if !paused {
-                        if let Some(death_reason) = b.animate_bullet(&mut enemies, &mut player) {
+                        if let Some(death_reason) = b.animate_bullet(&mut enemies, &mut state.player) {
                             bullets_to_delete.push(*i);
 
                             let base = b.get_base();
@@ -396,18 +356,18 @@ fn main() -> Result<(), ShooterError> {
                                     },
                                     &base.0.pos,
                                     &mut state.id_gen,
-                                    &mut rng,
+                                    &mut state.rng,
                                 ),
                                 _ => {}
                             }
 
                             if let DeathReason::HitPlayer = death_reason {
-                                if player.invtime == 0 && !game_over && 0 < player.lives {
-                                    player.lives -= 1;
-                                    if player.lives == 0 {
+                                if state.player.invtime == 0 && !game_over && 0 < state.player.lives {
+                                    state.player.lives -= 1;
+                                    if state.player.lives == 0 {
                                         game_over = true;
                                     } else {
-                                        player.invtime = PLAYER_INVINCIBLE_TIME;
+                                        state.player.invtime = PLAYER_INVINCIBLE_TIME;
                                     }
                                 }
                             }
@@ -467,7 +427,7 @@ fn main() -> Result<(), ShooterError> {
                     [
                         WIDTH as f64,
                         (3) as f64 * 12.0 + 4.,
-                        player.power as f64,
+                        state.player.power as f64,
                         8.,
                     ],
                     context.transform,
@@ -520,18 +480,18 @@ fn main() -> Result<(), ShooterError> {
                     )
                 };
 
-                draw_text(&format!("Frame: {}", time), 0);
-                draw_text(&format!("Score: {}", player.score), 1);
-                draw_text(&format!("Kills: {}", player.kills), 2);
+                draw_text(&format!("Frame: {}", state.time), 0);
+                draw_text(&format!("Score: {}", state.player.score), 1);
+                draw_text(&format!("Kills: {}", state.player.kills), 2);
                 draw_text(
-                    &format!("Power: {}, Level: {}", player.power, player.power_level()),
+                    &format!("Power: {}, Level: {}", state.player.power, state.player.power_level()),
                     3,
                 );
                 draw_text(
                     &format!(
                         "Wave: {} Level: {}",
-                        time / wave_period,
-                        player.difficulty_level()
+                        state.time / wave_period,
+                        state.player.difficulty_level()
                     ),
                     4,
                 );
@@ -603,7 +563,7 @@ fn main() -> Result<(), ShooterError> {
                 }
 
                 // Display player lives
-                for i in 0..player.lives {
+                for i in 0..state.player.lives {
                     let width = assets.player_tex.get_width();
                     let height = assets.player_tex.get_height();
                     let transl = translate([
@@ -680,8 +640,6 @@ fn main() -> Result<(), ShooterError> {
                                 enemies.clear();
                                 state.bullets.clear();
                                 tent.clear();
-                                time = 0;
-                                player.reset();
                                 shots_bullet = 0;
                                 shots_missile = 0;
                                 paused = false;
@@ -690,12 +648,12 @@ fn main() -> Result<(), ShooterError> {
                         }
                         Key::G => {
                             if cfg!(debug_assertions) && tf {
-                                player.score += 1000;
+                                state.player.score += 1000;
                             }
                         }
                         Key::H => {
                             if cfg!(debug_assertions) && tf {
-                                player.power += 16;
+                                state.player.power += 16;
                             }
                         }
                         _ => {}

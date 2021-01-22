@@ -143,6 +143,7 @@ impl ShooterState {
             assets: assets.unwrap(),
         }
     }
+
     pub fn restart(&mut self) -> Result<(), ShooterError> {
         self.items.clear();
         self.enemies.clear();
@@ -157,6 +158,139 @@ impl ShooterState {
         self.paused = false;
         self.game_over = false;
         Ok(())
+    }
+
+    #[cfg(not(feature = "piston"))]
+    fn add_blend(ent: Entity) -> Entity {
+        ent
+    }
+
+    #[cfg(feature = "piston")]
+    fn add_blend(ent: Entity) -> Entity {
+        ent.blend(Blend::Add)
+    }
+
+    pub fn try_shoot(
+        &mut self,
+        key_shoot: bool,
+        weapon: &Weapon,
+        seed: u32,
+        enemies: &mut Vec<Enemy>,
+        add_tent: &mut impl FnMut(bool, &[f64; 2], &mut u32, &mut Xor128),
+    ) {
+        let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
+
+        if Weapon::Bullet == *weapon || Weapon::Missile == *weapon {
+            let player = &mut self.player;
+            if key_shoot && player.cooldown == 0 {
+                let level = player.power_level() as i32;
+                player.cooldown += shoot_period;
+                for i in -1 - level..2 + level {
+                    let speed = if let Weapon::Bullet = weapon {
+                        BULLET_SPEED
+                    } else {
+                        MISSILE_SPEED
+                    };
+                    let mut ent =
+                        Entity::new(&mut self.id_gen, player.base.pos, [i as f64, -speed])
+                            .rotation((i as f32).atan2(speed as f32));
+                    if let Weapon::Bullet = weapon {
+                        self.shots_bullet += 1;
+                        ent = Self::add_blend(ent);
+                        self.bullets
+                            .insert(ent.id, Projectile::Bullet(BulletBase(ent)));
+                    } else {
+                        self.shots_missile += 1;
+                        ent = ent.health(5);
+                        self.bullets.insert(
+                            ent.id,
+                            Projectile::Missile {
+                                base: BulletBase(ent),
+                                target: 0,
+                                trail: vec![],
+                            },
+                        );
+                    }
+                }
+            }
+        } else if Weapon::Light == *weapon && key_shoot {
+            let player = &self.player;
+            for enemy in enemies.iter_mut() {
+                if enemy.test_hit([
+                    player.base.pos[0] - LIGHT_WIDTH,
+                    0.,
+                    player.base.pos[0] + LIGHT_WIDTH,
+                    player.base.pos[1],
+                ]) {
+                    add_tent(true, &enemy.get_base().pos, &mut self.id_gen, &mut self.rng);
+                    enemy.damage(1 + player.power_level() as i32);
+                }
+            }
+        } else if Weapon::Lightning == *weapon && key_shoot {
+            let col = [1., 1., 1., 1.];
+            let col2 = [1., 0.5, 1., 0.25];
+            let nmax = std::cmp::min(
+                (self.player.power_level() as usize + 1 + self.time % 2) / 2,
+                31,
+            );
+            let mut branch_rng = Xor128::new(seed);
+
+            // Random walk with momentum
+            fn next_lightning(rng: &mut Xor128, a: &mut [f64; 4]) {
+                a[2] += LIGHTNING_ACCEL * (rng.next() - 0.5) - a[2] * LIGHTNING_FEEDBACK;
+                a[3] += LIGHTNING_ACCEL * (rng.next() - 0.5) - a[3] * LIGHTNING_FEEDBACK;
+                a[0] += a[2];
+                a[1] += a[3];
+            }
+
+            for _ in 0..nmax {
+                // Use the same seed twice to reproduce random sequence
+                let seed = branch_rng.nexti();
+
+                // Lambda to call the same lightning sequence twice, first pass for detecting hit enemy
+                // and second pass for rendering.
+                let lightning =
+                    |state: &mut Self,
+                     seed: u32,
+                     length: u32,
+                     f: &mut dyn FnMut(&mut Self, &[f64; 4]) -> bool| {
+                        let mut rng2 = Xor128::new(seed);
+                        let mut a = [state.player.base.pos[0], state.player.base.pos[1], 0., -16.];
+                        for i in 0..length {
+                            let ox = a[0];
+                            let oy = a[1];
+                            next_lightning(&mut rng2, &mut a);
+                            let segment = [ox, oy, a[0], a[1]];
+                            if !f(state, &segment) {
+                                return i;
+                            }
+                        }
+                        length
+                    };
+
+                let length = lightning(
+                    self,
+                    seed,
+                    LIGHTNING_VERTICES,
+                    &mut |state: &mut Self, segment: &[f64; 4]| {
+                        let b = [segment[2], segment[3]];
+                        for enemy in enemies.iter_mut() {
+                            let ebb = enemy.get_bb();
+                            if ebb[0] < b[0] + 4.
+                                && b[0] - 4. <= ebb[2]
+                                && ebb[1] < b[1] + 4.
+                                && b[1] - 4. <= ebb[3]
+                            {
+                                enemy.damage(2 + state.rng.gen_range(0, 3) as i32);
+                                add_tent(true, &b, &mut state.id_gen, &mut state.rng);
+                                return false;
+                            }
+                        }
+                        return true;
+                    },
+                );
+            }
+        }
     }
 }
 

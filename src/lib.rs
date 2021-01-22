@@ -135,6 +135,12 @@ impl ShooterState {
             78 => {
                 // N
                 self.state.restart()?;
+                for (name, class_name) in &[("gameOver", "hidden"), ("paused", "hidden noselect")] {
+                    let elem = document()
+                        .get_element_by_id(name)
+                        .ok_or_else(|| js_str!("HTML element not found"))?;
+                    elem.set_class_name(class_name);
+                }
             }
             _ => (),
         }

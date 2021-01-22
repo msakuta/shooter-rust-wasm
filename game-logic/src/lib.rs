@@ -172,7 +172,7 @@ impl ShooterState {
 
     /// Function to call the same lightning sequence twice, first pass for detecting hit enemy
     /// and second pass for rendering.
-    pub fn lightning(
+    pub fn lightning_branch(
         &mut self,
         seed: u32,
         length: u32,
@@ -198,6 +198,21 @@ impl ShooterState {
             }
         }
         length
+    }
+
+    pub fn lightning(&mut self, seed: u32, f: &mut dyn FnMut(&mut Self, u32)) {
+        let nmax = std::cmp::min(
+            (self.player.power_level() as usize + 1 + self.time % 2) / 2,
+            31,
+        );
+        let mut branch_rng = Xor128::new(seed);
+
+        for _ in 0..nmax {
+            // Use the same seed twice to reproduce random sequence
+            let seed = branch_rng.nexti();
+
+            f(self, seed);
+        }
     }
 
     pub fn try_shoot(
@@ -257,19 +272,8 @@ impl ShooterState {
                 }
             }
         } else if Weapon::Lightning == *weapon && key_shoot {
-            let col = [1., 1., 1., 1.];
-            let col2 = [1., 0.5, 1., 0.25];
-            let nmax = std::cmp::min(
-                (self.player.power_level() as usize + 1 + self.time % 2) / 2,
-                31,
-            );
-            let mut branch_rng = Xor128::new(seed);
-
-            for _ in 0..nmax {
-                // Use the same seed twice to reproduce random sequence
-                let seed = branch_rng.nexti();
-
-                let length = self.lightning(
+            self.lightning(seed, &mut |state, seed| {
+                state.lightning_branch(
                     seed,
                     LIGHTNING_VERTICES,
                     &mut |state: &mut Self, segment: &[f64; 4]| {
@@ -289,7 +293,7 @@ impl ShooterState {
                         return true;
                     },
                 );
-            }
+            });
         }
     }
 }

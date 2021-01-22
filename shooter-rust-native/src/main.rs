@@ -159,17 +159,8 @@ fn main() -> Result<(), ShooterError> {
                     } else if Weapon::Lightning == weapon && key_shoot {
                         let col = [1., 1., 1., 1.];
                         let col2 = [1., 0.5, 1., 0.25];
-                        let nmax = std::cmp::min(
-                            (state.player.power_level() as usize + 1 + state.time % 2) / 2,
-                            31,
-                        );
-                        let mut branch_rng = Xor128::new(seed);
-
-                        for _ in 0..nmax {
-                            // Use the same seed twice to reproduce random sequence
-                            let seed = branch_rng.nexti();
-
-                            let length = state.lightning(
+                        state.lightning(seed, &mut |state: &mut ShooterState, seed| {
+                            let length = state.lightning_branch(
                                 seed,
                                 LIGHTNING_VERTICES,
                                 &mut |_: &mut ShooterState, segment: &[f64; 4]| {
@@ -189,7 +180,7 @@ fn main() -> Result<(), ShooterError> {
                             );
                             let hit = length != LIGHTNING_VERTICES;
 
-                            state.lightning(
+                            state.lightning_branch(
                                 seed,
                                 length,
                                 &mut |_: &mut ShooterState, segment: &[f64; 4]| {
@@ -203,7 +194,7 @@ fn main() -> Result<(), ShooterError> {
                                     true
                                 },
                             );
-                        }
+                        });
                     }
 
                     if state.player.cooldown < 1 {

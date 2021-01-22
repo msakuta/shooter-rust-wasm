@@ -1,51 +1,17 @@
-use cgmath::{Matrix3, Matrix4, Vector3};
+use cgmath::{Matrix3, Matrix4};
 use js_sys::JsString;
 use slice_of_array::SliceFlatExt;
-use std::rc::Rc;
-use std::{collections::HashMap, vec};
 use vecmath::{vec2_add, vec2_normalized, vec2_scale, vec2_sub};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{
-    Element, HtmlImageElement, WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlShader,
-    WebGlTexture,
+use web_sys::{WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlShader};
+
+use game_logic::{
+    console_log,
+    consts::*,
+    entity::{Assets, Entity, ShaderBundle, TempEntity, Weapon},
+    js_str,
 };
-
-macro_rules! console_log {
-    ($fmt:expr, $($arg1:expr),*) => {
-        crate::log(&format!($fmt, $($arg1),+))
-    };
-    ($fmt:expr) => {
-        crate::log($fmt)
-    }
-}
-
-/// format-like macro that returns js_sys::String
-macro_rules! js_str {
-    ($fmt:expr, $($arg1:expr),*) => {
-        JsValue::from_str(&format!($fmt, $($arg1),+))
-    };
-    ($fmt:expr) => {
-        JsValue::from_str($fmt)
-    }
-}
-
-/// format-like macro that returns Err(js_sys::String)
-macro_rules! js_err {
-    ($fmt:expr, $($arg1:expr),*) => {
-        Err(JsValue::from_str(&format!($fmt, $($arg1),+)))
-    };
-    ($fmt:expr) => {
-        Err(JsValue::from_str($fmt))
-    }
-}
-
-use game_logic::consts::*;
-use game_logic::entity::{
-    Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Player, Projectile,
-    ShaderBundle, ShieldedBoss, TempEntity, Weapon,
-};
-use game_logic::xor128::Xor128;
 
 #[wasm_bindgen]
 extern "C" {
@@ -170,7 +136,7 @@ impl ShooterState {
     }
 
     pub fn restart(&mut self) -> Result<(), JsValue> {
-        self.restart();
+        self.0.restart()?;
 
         for icon in &self.0.assets.player_live_icons {
             icon.set_class_name("");
@@ -376,7 +342,6 @@ impl ShooterState {
 
             if self.0.shoot_pressed && self.0.player.cooldown == 0 {
                 let weapon = self.0.player.weapon;
-                let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
 
                 // Use the same seed twice to reproduce random sequence
                 let seed = self.0.rng.nexti();
@@ -478,7 +443,7 @@ impl ShooterState {
                             state.lightning_branch(
                                 seed,
                                 length,
-                                &mut |state, segment: &[f64; 4]| {
+                                &mut |_state, segment: &[f64; 4]| {
                                     // line(if hit { col } else { col2 }, if hit { 2. } else { 1. }, *segment, context.transform, graphics);
                                     let prev_node = if let Some(node) = prev_node_opt {
                                         node
@@ -589,7 +554,12 @@ impl ShooterState {
 
         self.0.draw_bullets(&context);
 
-        self.0.animate_bullets(&mut add_tent);
+        if self.0.animate_bullets(&mut add_tent) {
+            let game_over_elem = document()
+                .get_element_by_id("gameOver")
+                .ok_or_else(|| js_str!("game over elem not found"))?;
+            game_over_elem.set_class_name("");
+        };
 
         self.0.draw_tents(&context);
 
@@ -617,15 +587,19 @@ impl ShooterState {
         set_text("score", &format!("Score: {}", self.0.player.score));
         set_text("kills", &format!("Kills: {}", self.0.player.kills));
         set_text(
-            "difficulty",
-            &format!("Difficulty Level: {}", self.0.player.difficulty_level()),
-        );
-        set_text(
             "power",
             &format!(
                 "Power: {} Level: {}",
                 self.0.player.power,
                 self.0.player.power_level()
+            ),
+        );
+        set_text(
+            "waves",
+            &format!(
+                "Wave: {} Level: {}",
+                self.0.time / wave_period,
+                self.0.player.difficulty_level()
             ),
         );
         set_text(

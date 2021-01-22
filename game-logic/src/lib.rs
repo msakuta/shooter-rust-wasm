@@ -6,12 +6,10 @@ use std::{collections::HashMap, vec};
 #[cfg(feature = "webgl")]
 use wasm_bindgen::{prelude::*, JsCast};
 #[cfg(feature = "webgl")]
-use web_sys::{
-    Document, Element, HtmlImageElement, WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL,
-    WebGlShader, WebGlTexture,
-};
+use web_sys::{HtmlImageElement, WebGlBuffer, WebGlRenderingContext as GL, WebGlTexture};
 
 #[cfg(feature = "webgl")]
+#[macro_export]
 macro_rules! console_log {
     ($fmt:expr, $($arg1:expr),*) => {
         crate::log(&format!($fmt, $($arg1),+))
@@ -32,6 +30,7 @@ macro_rules! console_log {
 }
 
 #[cfg(feature = "webgl")]
+#[macro_export]
 /// format-like macro that returns js_sys::String
 macro_rules! js_str {
     ($fmt:expr, $($arg1:expr),*) => {
@@ -43,6 +42,7 @@ macro_rules! js_str {
 }
 
 #[cfg(feature = "webgl")]
+#[macro_export]
 /// format-like macro that returns Err(js_sys::String)
 macro_rules! js_err {
     ($fmt:expr, $($arg1:expr),*) => {
@@ -58,8 +58,6 @@ pub mod entity;
 pub mod xor128;
 
 use crate::consts::*;
-#[cfg(feature = "webgl")]
-use crate::entity::ShaderBundle;
 use crate::entity::{
     Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Player, Projectile,
     ShieldedBoss, TempEntity, Weapon,
@@ -512,7 +510,7 @@ impl ShooterState {
     #[cfg(feature = "webgl")]
     pub fn draw_bullets(&self, gl: &GL) {
         for (_, b) in &self.bullets {
-            b.draw(self, gl, &self.assets);
+            b.draw(gl, &self.assets);
         }
     }
 
@@ -523,13 +521,15 @@ impl ShooterState {
         }
     }
 
+    /// Returns true if player was killed, signaling game over event.
     pub fn animate_bullets(
         &mut self,
         add_tent: &mut impl FnMut(bool, &[f64; 2], &mut ShooterState),
-    ) {
+    ) -> bool {
         if self.paused {
-            return;
+            return false;
         }
+        let mut ret = false;
         let mut bullets_to_delete: Vec<u32> = Vec::new();
         let mut bullets = std::mem::take(&mut self.bullets);
         for (i, b) in &mut bullets {
@@ -557,6 +557,7 @@ impl ShooterState {
                             self.player.lives -= 1;
                             if self.player.lives == 0 {
                                 self.game_over = true;
+                                ret = true;
                             } else {
                                 self.player.invtime = PLAYER_INVINCIBLE_TIME;
                             }
@@ -580,6 +581,8 @@ impl ShooterState {
                 debug_assert!(false, "All keys must exist in bullets");
             }
         }
+
+        ret
     }
 
     #[cfg(feature = "webgl")]

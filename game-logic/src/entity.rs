@@ -13,6 +13,7 @@ use piston_window::{
     math::{rotate_radians, scale, translate},
     *,
 };
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use std::ops::{Add, Mul};
 use std::rc::Rc;
 use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
@@ -988,15 +989,8 @@ impl Projectile {
     }
 
     #[cfg(feature = "webgl")]
-    pub fn draw(&self, state: &ShooterState, gl: &GL, assets: &Assets) {
+    pub fn draw(&self, gl: &GL, assets: &Assets) {
         if let Projectile::Missile { trail, .. } = self {
-            let mut iter = trail.iter().enumerate();
-            if let Some(mut prev) = iter.next() {
-                for e in iter {
-                    prev = e;
-                }
-            }
-
             let shader = assets.trail_shader.as_ref().unwrap();
             gl.use_program(Some(&shader.program));
 

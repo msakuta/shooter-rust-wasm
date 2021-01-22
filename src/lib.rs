@@ -132,6 +132,10 @@ impl ShooterState {
                 self.state.player.weapon = *next_weapon;
                 println!("Weapon switched: {}", name);
             }
+            78 => {
+                // N
+                self.state.restart()?;
+            }
             _ => (),
         }
         Ok(JsString::from(self.state.player.weapon.to_string()))

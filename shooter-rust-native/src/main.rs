@@ -180,6 +180,10 @@ fn main() -> Result<(), ShooterError> {
                     } else {
                         state.player.cooldown -= 1;
                     }
+
+                    if 0 < state.player.invtime {
+                        state.player.invtime -= 1;
+                    }
                 }
 
                 let wave_period = state.gen_enemies();
@@ -262,7 +266,7 @@ fn main() -> Result<(), ShooterError> {
                         20,
                     );
                     draw_text_pos(
-                        "Press Space to Start",
+                        "Press N to Restart",
                         [(WIDTH / 2 - 110) as f64, (HEIGHT * 3 / 4 + 20) as f64],
                         color,
                         20,
@@ -382,7 +386,7 @@ fn main() -> Result<(), ShooterError> {
                         Key::Down | Key::S => key_down = tf,
                         Key::Left | Key::A => key_left = tf,
                         Key::Right | Key::D => key_right = tf,
-                        Key::C => key_shoot = tf,
+                        Key::Space => key_shoot = tf,
                         Key::Z | Key::X => {
                             if !key_change && tf && !state.game_over {
                                 use Weapon::*;
@@ -433,7 +437,7 @@ fn main() -> Result<(), ShooterError> {
                             }
                             key_pause = tf;
                         }
-                        Key::Space => {
+                        Key::N => {
                             if tf {
                                 state.restart()?;
                                 state.shots_bullet = 0;

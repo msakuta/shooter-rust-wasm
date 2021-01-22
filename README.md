@@ -15,6 +15,7 @@ Try it now in your browser! https://msakuta.github.io/shooter-rust-wasm/
 * Z, X - select weapon
 * Space - shoot weapon
 * P - toggle pause game
+* N - Restart new game
 
 
 # Building

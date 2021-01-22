@@ -18,7 +18,7 @@ fn main() -> Result<(), ShooterError> {
 
     let (assets, mut glyphs) = Assets::new(&mut window);
 
-    let mut state = ShooterState::new(None);
+    let mut state = ShooterState::default();
 
     let [mut key_up, mut key_down, mut key_left, mut key_right, mut key_shoot, mut key_change, mut key_pause] =
         [false; 7];

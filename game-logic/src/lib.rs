@@ -91,19 +91,10 @@ pub struct ShooterState {
     pub rng: Xor128,
     pub shots_bullet: usize,
     pub shots_missile: usize,
-
-    pub shoot_pressed: bool,
-    pub left_pressed: bool,
-    pub right_pressed: bool,
-    pub up_pressed: bool,
-    pub down_pressed: bool,
-
-    #[cfg(feature = "webgl")]
-    pub assets: Assets,
 }
 
-impl ShooterState {
-    pub fn new(_assets: Option<Assets>) -> Self {
+impl Default for ShooterState {
+    fn default() -> Self {
         let mut id_gen = 0;
         let mut player = Player::new(Entity::new(
             &mut id_gen,
@@ -126,16 +117,11 @@ impl ShooterState {
             rng: Xor128::new(3232132),
             shots_bullet: 0,
             shots_missile: 0,
-            shoot_pressed: false,
-            left_pressed: false,
-            right_pressed: false,
-            up_pressed: false,
-            down_pressed: false,
-            #[cfg(feature = "webgl")]
-            assets: _assets.unwrap(),
         }
     }
+}
 
+impl ShooterState {
     pub fn restart(&mut self) -> Result<(), ShooterError> {
         self.items.clear();
         self.enemies.clear();
@@ -405,9 +391,9 @@ impl ShooterState {
     }
 
     #[cfg(feature = "webgl")]
-    pub fn draw_items(&self, gl: &GL) {
+    pub fn draw_items(&self, gl: &GL, assets: &Assets) {
         for item in &self.items {
-            item.draw(gl, &self.assets);
+            item.draw(gl, assets);
         }
     }
 
@@ -442,9 +428,9 @@ impl ShooterState {
     }
 
     #[cfg(feature = "webgl")]
-    pub fn draw_enemies(&self, gl: &GL) {
+    pub fn draw_enemies(&self, gl: &GL, assets: &Assets) {
         for enemy in &self.enemies {
-            enemy.draw(self, gl, &self.assets);
+            enemy.draw(self, gl, assets);
         }
     }
 
@@ -502,9 +488,9 @@ impl ShooterState {
     }
 
     #[cfg(feature = "webgl")]
-    pub fn draw_bullets(&self, gl: &GL) {
+    pub fn draw_bullets(&self, gl: &GL, assets: &Assets) {
         for b in self.bullets.values() {
-            b.draw(gl, &self.assets);
+            b.draw(gl, assets);
         }
     }
 
@@ -574,9 +560,9 @@ impl ShooterState {
     }
 
     #[cfg(feature = "webgl")]
-    pub fn draw_tents(&self, gl: &GL) {
+    pub fn draw_tents(&self, gl: &GL, assets: &Assets) {
         for tent in &self.tent {
-            tent.draw_temp(gl, &self.assets);
+            tent.draw_temp(gl, assets);
         }
     }
 

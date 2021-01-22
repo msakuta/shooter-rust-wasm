@@ -42,8 +42,21 @@ fn get_context() -> GL {
         .unwrap()
 }
 
+#[derive(Default)]
+struct InputState {
+    pub shoot_pressed: bool,
+    pub left_pressed: bool,
+    pub right_pressed: bool,
+    pub up_pressed: bool,
+    pub down_pressed: bool,
+}
+
 #[wasm_bindgen]
-pub struct ShooterState(game_logic::ShooterState);
+pub struct ShooterState {
+    state: game_logic::ShooterState,
+    input_state: InputState,
+    assets: Assets,
+}
 
 #[wasm_bindgen]
 impl ShooterState {
@@ -51,31 +64,31 @@ impl ShooterState {
     pub fn new(image_assets: js_sys::Array) -> Result<ShooterState, JsValue> {
         let context = get_context();
 
-        Ok(Self(game_logic::ShooterState::new(Some(Assets::new(
-            &document(),
-            &context,
-            image_assets,
-        )?))))
+        Ok(Self {
+            state: game_logic::ShooterState::default(),
+            input_state: InputState::default(),
+            assets: Assets::new(&document(), &context, image_assets)?,
+        })
     }
 
     pub fn key_down(&mut self, event: web_sys::KeyboardEvent) -> Result<JsString, JsValue> {
         println!("key: {}", event.key_code());
         match event.key_code() {
-            32 => self.0.shoot_pressed = true,
-            65 | 37 => self.0.left_pressed = true,
-            68 | 39 => self.0.right_pressed = true,
+            32 => self.input_state.shoot_pressed = true,
+            65 | 37 => self.input_state.left_pressed = true,
+            68 | 39 => self.input_state.right_pressed = true,
             80 => {
                 // P
-                self.0.paused = !self.0.paused;
+                self.state.paused = !self.state.paused;
                 let paused_element = document().get_element_by_id("paused").unwrap();
-                paused_element.set_class_name(if self.0.paused {
+                paused_element.set_class_name(if self.state.paused {
                     "noselect"
                 } else {
                     "noselect hidden"
                 })
             }
-            87 | 38 => self.0.up_pressed = true,
-            83 | 40 => self.0.down_pressed = true,
+            87 | 38 => self.input_state.up_pressed = true,
+            83 | 40 => self.input_state.down_pressed = true,
             88 | 90 => {
                 // Z or X
                 use Weapon::*;
@@ -86,7 +99,7 @@ impl ShooterState {
                     ("Missile", Missile),
                     ("Lightning", Lightning),
                 ];
-                let (name, next_weapon) = match self.0.player.weapon {
+                let (name, next_weapon) = match self.state.player.weapon {
                     Bullet => {
                         if is_x {
                             &weapon_set[1]
@@ -116,30 +129,30 @@ impl ShooterState {
                         }
                     }
                 };
-                self.0.player.weapon = *next_weapon;
+                self.state.player.weapon = *next_weapon;
                 println!("Weapon switched: {}", name);
             }
             _ => (),
         }
-        Ok(JsString::from(self.0.player.weapon.to_string()))
+        Ok(JsString::from(self.state.player.weapon.to_string()))
     }
 
     pub fn key_up(&mut self, event: web_sys::KeyboardEvent) {
         console_log!("key: {}", event.key_code());
         match event.key_code() {
-            32 => self.0.shoot_pressed = false,
-            65 | 37 => self.0.left_pressed = false,
-            68 | 39 => self.0.right_pressed = false,
-            87 | 38 => self.0.up_pressed = false,
-            83 | 40 => self.0.down_pressed = false,
+            32 => self.input_state.shoot_pressed = false,
+            65 | 37 => self.input_state.left_pressed = false,
+            68 | 39 => self.input_state.right_pressed = false,
+            87 | 38 => self.input_state.up_pressed = false,
+            83 | 40 => self.input_state.down_pressed = false,
             _ => (),
         }
     }
 
     pub fn restart(&mut self) -> Result<(), JsValue> {
-        self.0.restart()?;
+        self.state.restart()?;
 
-        for icon in &self.0.assets.player_live_icons {
+        for icon in &self.assets.player_live_icons {
             icon.set_class_name("");
         }
         let game_over_element = document()
@@ -197,7 +210,7 @@ impl ShooterState {
         context.blend_equation(GL::FUNC_ADD);
         context.blend_func(GL::SRC_ALPHA, GL::ONE_MINUS_SRC_ALPHA);
 
-        self.0.assets.sprite_shader = Some(shader);
+        self.assets.sprite_shader = Some(shader);
 
         let vert_shader = compile_shader(
             &context,
@@ -232,23 +245,21 @@ impl ShooterState {
         )?;
         let program = link_program(&context, &vert_shader, &frag_shader)?;
         context.use_program(Some(&program));
-        self.0.assets.trail_shader = Some(ShaderBundle::new(&context, program));
+        self.assets.trail_shader = Some(ShaderBundle::new(&context, program));
 
         context.active_texture(GL::TEXTURE0);
         context.uniform1i(
-            self.0
-                .assets
+            self.assets
                 .trail_shader
                 .as_ref()
                 .and_then(|s| s.texture_loc.as_ref()),
             0,
         );
 
-        self.0.assets.trail_buffer =
-            Some(context.create_buffer().ok_or("failed to create buffer")?);
+        self.assets.trail_buffer = Some(context.create_buffer().ok_or("failed to create buffer")?);
 
-        self.0.assets.rect_buffer = Some(context.create_buffer().ok_or("failed to create buffer")?);
-        context.bind_buffer(GL::ARRAY_BUFFER, self.0.assets.rect_buffer.as_ref());
+        self.assets.rect_buffer = Some(context.create_buffer().ok_or("failed to create buffer")?);
+        context.bind_buffer(GL::ARRAY_BUFFER, self.assets.rect_buffer.as_ref());
         let rect_vertices: [f32; 8] = [1., 1., -1., 1., -1., -1., 1., -1.];
         vertex_buffer_data(&context, &rect_vertices);
 
@@ -260,19 +271,12 @@ impl ShooterState {
     pub fn render(&mut self) -> Result<(), JsValue> {
         let context = get_context();
 
-        if self.0.time > 300000 {
-            console_log!("All done!");
-
-            // Drop our handle to this closure so that it will get cleaned
-            // up once we return.
-            // let _ = f.borrow_mut().take();
-            return Ok(());
+        if !self.state.paused {
+            self.state.time += 1;
         }
+        self.state.disptime += 1;
 
-        if !self.0.paused {
-            self.0.time += 1;
-        }
-        self.0.disptime += 1;
+        let assets = &self.assets;
 
         // state must be passed as arguments since they are mutable
         // borrows and needs to be released for each iteration.
@@ -293,9 +297,9 @@ impl ShooterState {
             state.tent.push(TempEntity {
                 base: ent,
                 texture: if is_bullet {
-                    state.assets.explode_tex.clone()
+                    assets.explode_tex.clone()
                 } else {
-                    state.assets.explode2_tex.clone()
+                    assets.explode2_tex.clone()
                 },
                 max_frames,
                 width: if is_bullet { 16 } else { 32 },
@@ -309,13 +313,12 @@ impl ShooterState {
             });
         };
 
-        let wave_period = self.0.gen_enemies();
+        let wave_period = self.state.gen_enemies();
 
         context.clear(GL::COLOR_BUFFER_BIT);
 
         context.uniform_matrix4fv_with_f32_array(
-            self.0
-                .assets
+            self.assets
                 .sprite_shader
                 .as_ref()
                 .unwrap()
@@ -324,38 +327,39 @@ impl ShooterState {
             false,
             <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&Matrix4::from_scale(1.)),
         );
-        context.bind_texture(GL::TEXTURE_2D, Some(&self.0.assets.back_tex));
+        context.bind_texture(GL::TEXTURE_2D, Some(&self.assets.back_tex));
         context.draw_arrays(GL::TRIANGLE_FAN, 0, 4);
 
-        if !self.0.game_over && !self.0.paused {
-            if self.0.up_pressed {
-                self.0.player.move_up()
+        if !self.state.game_over && !self.state.paused {
+            if self.input_state.up_pressed {
+                self.state.player.move_up()
             }
-            if self.0.down_pressed {
-                self.0.player.move_down()
+            if self.input_state.down_pressed {
+                self.state.player.move_down()
             }
-            if self.0.left_pressed {
-                self.0.player.move_left()
+            if self.input_state.left_pressed {
+                self.state.player.move_left()
             }
-            if self.0.right_pressed {
-                self.0.player.move_right()
+            if self.input_state.right_pressed {
+                self.state.player.move_right()
             }
 
-            if self.0.shoot_pressed && self.0.player.cooldown == 0 {
-                let weapon = self.0.player.weapon;
+            if self.input_state.shoot_pressed && self.state.player.cooldown == 0 {
+                let weapon = self.state.player.weapon;
 
                 // Use the same seed twice to reproduce random sequence
-                let seed = self.0.rng.nexti();
+                let seed = self.state.rng.nexti();
 
-                self.0.try_shoot(self.0.shoot_pressed, seed, &mut add_tent);
+                self.state
+                    .try_shoot(self.input_state.shoot_pressed, seed, &mut add_tent);
 
                 if Weapon::Light == weapon {
                     let gl = &context;
-                    let assets = &self.0.assets;
-                    let player = &self.0.player;
+                    let assets = &self.assets;
+                    let player = &self.state.player;
                     let level = player.power_level() as i32;
 
-                    gl.use_program(Some(&self.0.assets.trail_shader.as_ref().unwrap().program));
+                    gl.use_program(Some(&self.assets.trail_shader.as_ref().unwrap().program));
                     let shader = assets.trail_shader.as_ref().unwrap();
 
                     gl.uniform1i(shader.texture_loc.as_ref(), 0);
@@ -399,8 +403,9 @@ impl ShooterState {
                 } else if Weapon::Lightning == weapon {
                     let gl = &context;
 
-                    self.0
-                        .lightning(seed, &mut |state: &mut game_logic::ShooterState, seed| {
+                    self.state.lightning(
+                        seed,
+                        &mut |state: &mut game_logic::ShooterState, seed| {
                             let length = state.lightning_branch(
                                 seed,
                                 LIGHTNING_VERTICES,
@@ -422,20 +427,13 @@ impl ShooterState {
                             );
                             let hit = length != LIGHTNING_VERTICES;
 
-                            gl.use_program(Some(
-                                &state.assets.trail_shader.as_ref().unwrap().program,
-                            ));
-                            let shader = state.assets.trail_shader.as_ref().unwrap();
+                            gl.use_program(Some(&assets.trail_shader.as_ref().unwrap().program));
+                            let shader = assets.trail_shader.as_ref().unwrap();
 
                             gl.uniform1i(shader.texture_loc.as_ref(), 0);
-                            gl.bind_texture(GL::TEXTURE_2D, Some(&state.assets.beam_tex));
+                            gl.bind_texture(GL::TEXTURE_2D, Some(&assets.beam_tex));
 
-                            enable_buffer(
-                                gl,
-                                &state.assets.trail_buffer,
-                                4,
-                                shader.vertex_position,
-                            );
+                            enable_buffer(gl, &assets.trail_buffer, 4, shader.vertex_position);
 
                             let mut vertices = vec![];
                             let mut prev_node_opt = None;
@@ -476,12 +474,12 @@ impl ShooterState {
 
                             vertex_buffer_data(gl, &vertices);
 
-                            let shader = state.assets.trail_shader.as_ref().unwrap();
+                            let shader = assets.trail_shader.as_ref().unwrap();
                             gl.uniform_matrix4fv_with_f32_array(
                                 shader.transform_loc.as_ref(),
                                 false,
                                 <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(
-                                    &state.assets.world_transform.cast().unwrap(),
+                                    &assets.world_transform.cast().unwrap(),
                                 ),
                             );
 
@@ -495,42 +493,37 @@ impl ShooterState {
 
                             enable_buffer(
                                 gl,
-                                &state.assets.rect_buffer,
+                                &assets.rect_buffer,
                                 2,
-                                state.assets.sprite_shader.as_ref().unwrap().vertex_position,
+                                assets.sprite_shader.as_ref().unwrap().vertex_position,
                             );
-                        });
+                        },
+                    );
                 }
             }
-            if self.0.player.cooldown < 1 {
-                self.0.player.cooldown = 0;
+            if self.state.player.cooldown < 1 {
+                self.state.player.cooldown = 0;
             } else {
-                self.0.player.cooldown -= 1;
+                self.state.player.cooldown -= 1;
             }
 
-            if 0 < self.0.player.invtime {
-                self.0.player.invtime -= 1;
+            if 0 < self.state.player.invtime {
+                self.state.player.invtime -= 1;
             }
         }
 
-        context.use_program(Some(&self.0.assets.sprite_shader.as_ref().unwrap().program));
+        context.use_program(Some(&self.assets.sprite_shader.as_ref().unwrap().program));
 
         enable_buffer(
             &context,
-            &self.0.assets.rect_buffer,
+            &self.assets.rect_buffer,
             2,
-            self.0
-                .assets
-                .sprite_shader
-                .as_ref()
-                .unwrap()
-                .vertex_position,
+            self.assets.sprite_shader.as_ref().unwrap().vertex_position,
         );
 
         let load_identity = |state: &Self| {
             context.uniform_matrix3fv_with_f32_array(
                 state
-                    .0
                     .assets
                     .sprite_shader
                     .as_ref()
@@ -544,34 +537,35 @@ impl ShooterState {
 
         load_identity(self);
 
-        self.0.draw_items(&context);
+        self.state.draw_items(&context, &self.assets);
 
-        self.0.animate_items();
+        self.state.animate_items();
 
-        self.0.draw_enemies(&context);
+        self.state.draw_enemies(&context, &self.assets);
 
-        self.0.animate_enemies();
+        self.state.animate_enemies();
 
-        self.0.draw_bullets(&context);
+        self.state.draw_bullets(&context, &self.assets);
 
-        if self.0.animate_bullets(&mut add_tent) {
+        if self.state.animate_bullets(&mut add_tent) {
             let game_over_elem = document()
                 .get_element_by_id("gameOver")
                 .ok_or_else(|| js_str!("game over elem not found"))?;
             game_over_elem.set_class_name("");
         };
 
-        self.0.draw_tents(&context);
+        self.state.draw_tents(&context, &self.assets);
 
-        self.0.animate_tents();
+        self.state.animate_tents();
 
         load_identity(self);
 
-        if !self.0.game_over && (self.0.player.invtime == 0 || self.0.disptime % 2 == 0) {
-            self.0.player.base.draw_tex(
-                &self.0.assets,
+        if !self.state.game_over && (self.state.player.invtime == 0 || self.state.disptime % 2 == 0)
+        {
+            self.state.player.base.draw_tex(
+                &self.assets,
                 &context,
-                &self.0.assets.player_texture,
+                &self.assets.player_texture,
                 Some(PLAYER_SIZE),
             );
         }
@@ -581,30 +575,36 @@ impl ShooterState {
             frame_element.set_inner_html(text);
         }
 
-        set_text("frame", &format!("Frame: {}", self.0.time));
-        set_text("score", &format!("Score: {}", self.0.player.score));
-        set_text("kills", &format!("Kills: {}", self.0.player.kills));
+        set_text("frame", &format!("Frame: {}", self.state.time));
+        set_text("score", &format!("Score: {}", self.state.player.score));
+        set_text("kills", &format!("Kills: {}", self.state.player.kills));
         set_text(
             "power",
             &format!(
                 "Power: {} Level: {}",
-                self.0.player.power,
-                self.0.player.power_level()
+                self.state.player.power,
+                self.state.player.power_level()
             ),
         );
         set_text(
             "waves",
             &format!(
                 "Wave: {} Level: {}",
-                self.0.time / wave_period,
-                self.0.player.difficulty_level()
+                self.state.time / wave_period,
+                self.state.player.difficulty_level()
             ),
         );
         set_text(
             "shots",
-            &format!("Shots {}/{}", self.0.shots_bullet, self.0.shots_missile),
+            &format!(
+                "Shots {}/{}",
+                self.state.shots_bullet, self.state.shots_missile
+            ),
         );
-        set_text("weapon", &format!("Weapon: {:#?}", self.0.player.weapon));
+        set_text(
+            "weapon",
+            &format!("Weapon: {:#?}", self.state.player.weapon),
+        );
 
         Ok(())
     }

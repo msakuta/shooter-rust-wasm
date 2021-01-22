@@ -219,52 +219,9 @@ fn main() -> Result<(), ShooterError> {
 
                 state.animate_items();
 
-                let mut to_delete: Vec<usize> = Vec::new();
-                let mut enemies = std::mem::take(&mut state.enemies);
-                for (i, enemy) in &mut ((&mut enemies).iter_mut().enumerate()) {
-                    if !paused {
-                        let killed = {
-                            if let Some(death_reason) = enemy.animate(&mut state) {
-                                to_delete.push(i);
-                                if let DeathReason::Killed = death_reason {
-                                    true
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            }
-                        };
-                        if killed {
-                            state.player.kills += 1;
-                            state.player.score += if enemy.is_boss() { 10 } else { 1 };
-                            if rng.gen_range(0, 100) < 20 {
-                                let ent =
-                                    Entity::new(&mut state.id_gen, enemy.get_base().pos, [0., 1.]);
-                                state.items.push(enemy.drop_item(ent));
-                            }
-                            continue;
-                        }
-                    }
-                    enemy.draw(&context, graphics, &assets);
-                }
-                state.enemies = enemies;
+                state.draw_enemies(&context, graphics, &assets);
 
-                for i in to_delete.iter().rev() {
-                    let dead = state.enemies.remove(*i);
-                    println!(
-                        "Deleted Enemy {} id={}: {} / {}",
-                        match dead {
-                            Enemy::Enemy1(_) => "enemy",
-                            Enemy::Boss(_) => "boss",
-                            Enemy::ShieldedBoss(_) => "ShieldedBoss",
-                            Enemy::SpiralEnemy(_) => "SpiralEnemy",
-                        },
-                        dead.get_id(),
-                        *i,
-                        state.enemies.len()
-                    );
-                }
+                state.animate_enemies();
 
                 let mut bullets_to_delete: Vec<u32> = Vec::new();
                 let mut bullets = std::mem::take(&mut state.bullets);
@@ -324,7 +281,7 @@ fn main() -> Result<(), ShooterError> {
 
                 bullets_to_delete.clear();
 
-                to_delete.clear();
+                let mut to_delete = vec![];
                 for (i, e) in &mut ((&mut tent).iter_mut().enumerate()) {
                     if !paused {
                         if let Some(_) = e.animate_temp() {

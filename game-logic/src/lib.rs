@@ -452,6 +452,65 @@ impl ShooterState {
             );
         }
     }
+
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub fn draw_enemies(
+        &self,
+        context: &Context,
+        graphics: &mut piston_window::G2d,
+        assets: &Assets,
+    ) {
+        for enemy in &self.enemies {
+            enemy.draw(&context, graphics, &assets);
+        }
+    }
+
+    pub fn animate_enemies(&mut self) {
+        let mut to_delete: Vec<usize> = Vec::new();
+        let mut enemies = std::mem::take(&mut self.enemies);
+        for (i, enemy) in &mut ((&mut enemies).iter_mut().enumerate()) {
+            if !self.paused {
+                let killed = {
+                    if let Some(death_reason) = enemy.animate(self) {
+                        to_delete.push(i);
+                        if let DeathReason::Killed = death_reason {
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                };
+                if killed {
+                    self.player.kills += 1;
+                    self.player.score += if enemy.is_boss() { 10 } else { 1 };
+                    if self.rng.gen_range(0, 100) < 20 {
+                        let ent = Entity::new(&mut self.id_gen, enemy.get_base().pos, [0., 1.]);
+                        self.items.push(enemy.drop_item(ent));
+                    }
+                    continue;
+                }
+            }
+        }
+        self.enemies = enemies;
+
+        for i in to_delete.iter().rev() {
+            let dead = self.enemies.remove(*i);
+            println!(
+                "Deleted Enemy {} id={}: {} / {}",
+                match dead {
+                    Enemy::Enemy1(_) => "enemy",
+                    Enemy::Boss(_) => "boss",
+                    Enemy::ShieldedBoss(_) => "ShieldedBoss",
+                    Enemy::SpiralEnemy(_) => "SpiralEnemy",
+                },
+                dead.get_id(),
+                *i,
+                self.enemies.len()
+            );
+        }
+    }
 }
 
 #[cfg(feature = "webgl")]

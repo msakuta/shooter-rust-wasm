@@ -4,7 +4,7 @@ use game_logic::{
         Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Matrix, Player,
         Projectile, ShieldedBoss, TempEntity, Weapon,
     },
-    ShooterState,
+    ShooterError, ShooterState,
 };
 use piston_window::draw_state::Blend;
 use piston_window::math::{rotate_radians, scale, translate};
@@ -12,7 +12,7 @@ use piston_window::*;
 use rand::prelude::*;
 use std::collections::HashMap;
 
-fn main() {
+fn main() -> Result<(), ShooterError> {
     let mut time = 0;
     let mut disptime = 0;
     let opengl = OpenGL::V3_2;
@@ -26,8 +26,7 @@ fn main() {
     let (assets, mut glyphs) = Assets::new(&mut window);
 
     let mut state = ShooterState::new(None);
-    let mut id_gen = 0;
-    let mut player = Player::new(Entity::new(&mut id_gen, [240., 400.], [0., 0.]));
+    let mut player = Player::new(Entity::new(&mut state.id_gen, [240., 400.], [0., 0.]));
 
     let mut enemies = Vec::<Enemy>::new();
 
@@ -148,7 +147,7 @@ fn main() {
                                     MISSILE_SPEED
                                 };
                                 let mut ent =
-                                    Entity::new(&mut id_gen, player.base.pos, [i as f64, -speed])
+                                    Entity::new(&mut state.id_gen, player.base.pos, [i as f64, -speed])
                                         .rotation((i as f32).atan2(speed as f32));
                                 if let Weapon::Bullet = weapon {
                                     shots_bullet += 1;
@@ -182,7 +181,7 @@ fn main() {
                         }
                         for enemy in enemies.iter_mut() {
                             if enemy.test_hit([player.base.pos[0] - LIGHT_WIDTH, 0., player.base.pos[0] + LIGHT_WIDTH, player.base.pos[1]]) {
-                                add_tent(true, &enemy.get_base().pos, &mut id_gen, &mut rng);
+                                add_tent(true, &enemy.get_base().pos, &mut state.id_gen, &mut rng);
                                 enemy.damage(1 + player.power_level() as i32);
                             }
                         }
@@ -231,7 +230,7 @@ fn main() {
                                     let ebb = enemy.get_bb();
                                     if ebb[0] < b[0] + 4. && b[0] - 4. <= ebb[2] && ebb[1] < b[1] + 4. && b[1] - 4. <= ebb[3] {
                                         enemy.damage(2 + rng.gen_range(0, 3));
-                                        add_tent(true, &b, &mut id_gen, &mut rng);
+                                        add_tent(true, &b, &mut state.id_gen, &mut rng);
                                         return false;
                                     }
                                 }
@@ -300,15 +299,15 @@ fn main() {
                                 };
                                 if let Some(x) = accum.iter().position(|x| dice < *x) {
                                     enemies.push(match x {
-                                        0 => Enemy::Enemy1(EnemyBase::new(&mut id_gen, pos, velo)
+                                        0 => Enemy::Enemy1(EnemyBase::new(&mut state.id_gen, pos, velo)
                                             .health(3)),
-                                        1 => Enemy::Boss(EnemyBase::new(&mut id_gen, pos, velo)
+                                        1 => Enemy::Boss(EnemyBase::new(&mut state.id_gen, pos, velo)
                                             .health(64)),
                                         2 => Enemy::ShieldedBoss(ShieldedBoss::new(
-                                                &mut id_gen,
+                                                &mut state.id_gen,
                                                 pos,
                                                 velo)),
-                                        _ => Enemy::new_spiral(&mut id_gen, pos, velo),
+                                        _ => Enemy::new_spiral(&mut state.id_gen, pos, velo),
                                     });
                                 }
                             }
@@ -361,7 +360,7 @@ fn main() {
                             player.kills += 1;
                             player.score += if enemy.is_boss() { 10 } else { 1 };
                             if rng.gen_range(0, 100) < 20 {
-                                let ent = Entity::new(&mut id_gen, enemy.get_base().pos, [0., 1.]);
+                                let ent = Entity::new(&mut state.id_gen, enemy.get_base().pos, [0., 1.]);
                                 items.push(enemy.drop_item(ent));
                             }
                             continue;
@@ -397,7 +396,7 @@ fn main() {
                                         true
                                     },
                                     &base.0.pos,
-                                    &mut id_gen,
+                                    &mut state.id_gen,
                                     &mut rng,
                                 ),
                                 _ => {}
@@ -617,7 +616,7 @@ fn main() {
                 }
             });
         } else {
-            let mut toggle_key = |opt: Option<Button>, tf: bool| {
+            let mut toggle_key = |opt: Option<Button>, tf: bool| -> Result<(), ShooterError> {
                 if let Some(Button::Keyboard(key)) = opt {
                     match key {
                         Key::Up | Key::W => key_up = tf,
@@ -677,12 +676,12 @@ fn main() {
                         }
                         Key::Space => {
                             if tf {
+                                state.restart()?;
                                 items.clear();
                                 enemies.clear();
                                 state.bullets.clear();
                                 tent.clear();
                                 time = 0;
-                                id_gen = 0;
                                 player.reset();
                                 shots_bullet = 0;
                                 shots_missile = 0;
@@ -703,9 +702,12 @@ fn main() {
                         _ => {}
                     }
                 }
+                Ok(())
             };
-            toggle_key(event.press_args(), true);
-            toggle_key(event.release_args(), false);
+            toggle_key(event.press_args(), true)?;
+            toggle_key(event.release_args(), false)?;
         }
     }
+
+    Ok(())
 }

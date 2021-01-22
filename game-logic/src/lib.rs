@@ -78,10 +78,10 @@ extern "C" {
 }
 
 #[cfg(feature = "webgl")]
-type ShooterError = JsValue;
+pub type ShooterError = JsValue;
 
 #[cfg(not(feature = "webgl"))]
-type ShooterError = std::io::Error;
+pub type ShooterError = std::io::Error;
 
 pub struct ShooterState {
     pub time: usize,

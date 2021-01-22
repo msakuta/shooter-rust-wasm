@@ -1,17 +1,10 @@
 use game_logic::{
     consts::*,
-    entity::{
-        Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Matrix, Player,
-        Projectile, ShieldedBoss, TempEntity, Weapon,
-    },
-    xor128::Xor128,
+    entity::{Assets, Entity, Matrix, TempEntity, Weapon, WEAPON_SET},
     ShooterError, ShooterState,
 };
-use piston_window::draw_state::Blend;
-use piston_window::math::{rotate_radians, scale, translate};
+use piston_window::math::translate;
 use piston_window::*;
-use rand::prelude::*;
-use std::collections::HashMap;
 
 fn main() -> Result<(), ShooterError> {
     let mut disptime = 0;
@@ -26,8 +19,6 @@ fn main() -> Result<(), ShooterError> {
     let (assets, mut glyphs) = Assets::new(&mut window);
 
     let mut state = ShooterState::new(None);
-
-    let mut rng = thread_rng();
 
     let [mut shots_bullet, mut shots_missile] = [0, 0];
 
@@ -319,17 +310,10 @@ fn main() -> Result<(), ShooterError> {
                 draw_text(&format!("shots_bullet: {}", shots_bullet), 5);
                 draw_text(&format!("shots_missile: {}", shots_missile), 6);
 
-                let weapon_set = [
-                    (0, Weapon::Bullet, [1., 0.5, 0.]),
-                    (2, Weapon::Light, [1., 1., 1.]),
-                    (3, Weapon::Missile, [0., 1., 0.]),
-                    (4, Weapon::Lightning, [1., 1., 0.]),
-                ];
-
                 draw_text_pos(
                     "Z",
                     [
-                        ((WINDOW_WIDTH + WIDTH) / 2 - weapon_set.len() as u32 * 32 / 2 - 16) as f64,
+                        ((WINDOW_WIDTH + WIDTH) / 2 - WEAPON_SET.len() as u32 * 32 / 2 - 16) as f64,
                         (WINDOW_HEIGHT * 3 / 4) as f64,
                     ],
                     [1.0, 1.0, 0.0, 1.0],
@@ -338,7 +322,7 @@ fn main() -> Result<(), ShooterError> {
                 draw_text_pos(
                     "X",
                     [
-                        ((WINDOW_WIDTH + WIDTH) / 2 + weapon_set.len() as u32 * 32 / 2 + 6) as f64,
+                        ((WINDOW_WIDTH + WIDTH) / 2 + WEAPON_SET.len() as u32 * 32 / 2 + 6) as f64,
                         (WINDOW_HEIGHT * 3 / 4) as f64,
                     ],
                     [1.0, 1.0, 0.0, 1.0],
@@ -347,10 +331,10 @@ fn main() -> Result<(), ShooterError> {
 
                 // Display weapon selection
                 let centerize = translate([
-                    -((assets.sphere_tex.get_width() * weapon_set.len() as u32) as f64 / 2.),
+                    -((assets.sphere_tex.get_width() * WEAPON_SET.len() as u32) as f64 / 2.),
                     -(assets.sphere_tex.get_height() as f64 / 2.),
                 ]);
-                for (i, v) in weapon_set.iter().enumerate() {
+                for (i, v) in WEAPON_SET.iter().enumerate() {
                     let sphere_image = if v.1 == weapon {
                         Image::new_color([v.2[0], v.2[1], v.2[2], 1.])
                     } else {
@@ -412,7 +396,7 @@ fn main() -> Result<(), ShooterError> {
                         Key::Z | Key::X => {
                             if !key_change && tf && !state.game_over {
                                 use Weapon::*;
-                                let weapon_set = [
+                                let weapon_names = [
                                     ("Bullet", Bullet),
                                     ("Light", Light),
                                     ("Missile", Missile),
@@ -421,30 +405,30 @@ fn main() -> Result<(), ShooterError> {
                                 let (name, next_weapon) = match weapon {
                                     Bullet => {
                                         if key == Key::X {
-                                            &weapon_set[1]
+                                            &weapon_names[1]
                                         } else {
-                                            &weapon_set[3]
+                                            &weapon_names[3]
                                         }
                                     }
                                     Light => {
                                         if key == Key::X {
-                                            &weapon_set[2]
+                                            &weapon_names[2]
                                         } else {
-                                            &weapon_set[0]
+                                            &weapon_names[0]
                                         }
                                     }
                                     Missile => {
                                         if key == Key::X {
-                                            &weapon_set[3]
+                                            &weapon_names[3]
                                         } else {
-                                            &weapon_set[1]
+                                            &weapon_names[1]
                                         }
                                     }
                                     Lightning => {
                                         if key == Key::X {
-                                            &weapon_set[0]
+                                            &weapon_names[0]
                                         } else {
-                                            &weapon_set[2]
+                                            &weapon_names[2]
                                         }
                                     }
                                 };

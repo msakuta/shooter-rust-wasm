@@ -5,6 +5,7 @@ use crate::xor128::Xor128;
 use crate::ShooterState;
 #[cfg(feature = "webgl")]
 use crate::{enable_buffer, load_texture, vertex_buffer_data};
+#[cfg(feature = "webgl")]
 use cgmath::{Matrix3, Matrix4, Rad, Vector2, Vector3};
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use piston_window::{
@@ -198,7 +199,7 @@ impl Weapon {
     }
 }
 
-pub const weapon_set: [(usize, Weapon, [f32; 3]); 4] = [
+pub const WEAPON_SET: [(usize, Weapon, [f32; 3]); 4] = [
     (0, Weapon::Bullet, [1., 0.5, 0.]),
     (2, Weapon::Light, [1., 1., 1.]),
     (3, Weapon::Missile, [0., 1., 0.]),
@@ -803,6 +804,7 @@ pub enum Projectile {
 
 const MISSILE_DETECTION_RANGE: f64 = 256.;
 const MISSILE_HOMING_SPEED: f64 = 0.25;
+#[cfg(feature = "webgl")]
 const MISSILE_TRAIL_WIDTH: f64 = 5.;
 const MISSILE_TRAIL_LENGTH: usize = 20;
 const MISSILE_DAMAGE: i32 = 5;

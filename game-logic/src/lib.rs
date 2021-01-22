@@ -1,9 +1,5 @@
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
-use piston_window::{
-    draw_state::Blend,
-    math::{rotate_radians, scale, translate},
-    G2d, *,
-};
+use piston_window::{draw_state::Blend, G2d, *};
 #[cfg(feature = "webgl")]
 use std::rc::Rc;
 use std::{collections::HashMap, vec};
@@ -109,7 +105,7 @@ pub struct ShooterState {
 }
 
 impl ShooterState {
-    pub fn new(assets: Option<Assets>) -> Self {
+    pub fn new(_assets: Option<Assets>) -> Self {
         let mut id_gen = 0;
         let mut player = Player::new(Entity::new(
             &mut id_gen,
@@ -138,7 +134,7 @@ impl ShooterState {
             up_pressed: false,
             down_pressed: false,
             #[cfg(feature = "webgl")]
-            assets: assets.unwrap(),
+            assets: _assets.unwrap(),
         }
     }
 

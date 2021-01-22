@@ -301,6 +301,117 @@ impl ShooterState {
         }
     }
 
+    /// Generate enemies in this frame.
+    ///
+    /// Returns: wave_period
+    pub fn gen_enemies(&mut self) -> usize {
+        let wave_period = 1024;
+        if !self.paused {
+            let dice = 256;
+            let wave = self.time % wave_period;
+            if wave < wave_period * 3 / 4 {
+                let [enemy_count, boss_count, shielded_boss_count, spiral_count] =
+                    self.enemies.iter().fold([0; 4], |mut c, e| match e {
+                        Enemy::Enemy1(_) => {
+                            c[0] += 1;
+                            c
+                        }
+                        Enemy::Boss(_) => {
+                            c[1] += 1;
+                            c
+                        }
+                        Enemy::ShieldedBoss(_) => {
+                            c[2] += 1;
+                            c
+                        }
+                        Enemy::SpiralEnemy(_) => {
+                            c[3] += 1;
+                            c
+                        }
+                    });
+                let gen_amount = self.player.difficulty_level() * 4 + 8;
+                let mut i = self.rng.gen_range(0, dice);
+                while i < gen_amount {
+                    let weights = [
+                        if enemy_count < 128 {
+                            if self.player.score < 1024 {
+                                64
+                            } else {
+                                16
+                            }
+                        } else {
+                            0
+                        },
+                        if boss_count < 32 { 4 } else { 0 },
+                        if shielded_boss_count < 32 {
+                            std::cmp::min(4, self.player.difficulty_level())
+                        } else {
+                            0
+                        },
+                        if spiral_count < 4 { 4 } else { 0 },
+                    ];
+                    let allweights = weights.iter().fold(0, |sum, x| sum + x);
+                    let accum = {
+                        let mut accum = [0; 4];
+                        let mut accumulator = 0;
+                        for (i, e) in weights.iter().enumerate() {
+                            accumulator += e;
+                            accum[i] = accumulator;
+                        }
+                        accum
+                    };
+
+                    if 0 < allweights {
+                        let rng = &mut self.rng;
+                        let dice = rng.gen_range(0, allweights);
+                        let (pos, velo) = match rng.gen_range(0, 3) {
+                            0 => {
+                                // top
+                                (
+                                    [rng.gen_rangef(0., WIDTH as f64), 0.],
+                                    [rng.next() - 0.5, rng.next() * 0.5],
+                                )
+                            }
+                            1 => {
+                                // left
+                                (
+                                    [0., rng.gen_rangef(0., WIDTH as f64)],
+                                    [rng.next() * 0.5, rng.next() - 0.5],
+                                )
+                            }
+                            2 => {
+                                // right
+                                (
+                                    [WIDTH as f64, rng.gen_rangef(0., WIDTH as f64)],
+                                    [-rng.next() * 0.5, rng.next() - 0.5],
+                                )
+                            }
+                            _ => panic!("RNG returned out of range"),
+                        };
+                        if let Some(x) = accum.iter().position(|x| dice < *x) {
+                            self.enemies.push(match x {
+                                0 => Enemy::Enemy1(
+                                    EnemyBase::new(&mut self.id_gen, pos, velo).health(3),
+                                ),
+                                1 => Enemy::Boss(
+                                    EnemyBase::new(&mut self.id_gen, pos, velo).health(64),
+                                ),
+                                2 => Enemy::ShieldedBoss(ShieldedBoss::new(
+                                    &mut self.id_gen,
+                                    pos,
+                                    velo,
+                                )),
+                                _ => Enemy::new_spiral(&mut self.id_gen, pos, velo),
+                            });
+                        }
+                    }
+                    i += self.rng.gen_range(0, dice);
+                }
+            }
+        }
+        wave_period
+    }
+
     #[cfg(feature = "webgl")]
     pub fn draw_items(&self, gl: &GL) {
         for item in &self.items {

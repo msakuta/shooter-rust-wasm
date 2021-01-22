@@ -27,8 +27,6 @@ fn main() -> Result<(), ShooterError> {
 
     let mut state = ShooterState::new(None);
 
-    let mut tent = Vec::<TempEntity>::new();
-
     let mut rng = thread_rng();
 
     let [mut shots_bullet, mut shots_missile] = [0, 0];
@@ -72,7 +70,7 @@ fn main() -> Result<(), ShooterError> {
 
                     wnd_context.trans(-1., -1.);
 
-                    image(&assets.bg, wnd_context.transform, graphics);
+                    image(&*assets.bg, wnd_context.transform, graphics);
 
                     context = Context::new_viewport(limit_viewport(
                         &viewport,
@@ -98,12 +96,12 @@ fn main() -> Result<(), ShooterError> {
                     let (playback_rate, max_frames) = if is_bullet { (2, 8) } else { (4, 6) };
                     ent = ent.health((max_frames * playback_rate) as i32);
 
-                    tent.push(TempEntity {
+                    state.tent.push(TempEntity {
                         base: ent,
                         texture: if is_bullet {
-                            &assets.explode_tex
+                            assets.explode_tex.clone()
                         } else {
-                            &assets.explode2_tex
+                            assets.explode2_tex.clone()
                         },
                         max_frames,
                         width: if is_bullet { 16 } else { 32 },
@@ -224,21 +222,9 @@ fn main() -> Result<(), ShooterError> {
 
                 state.animate_bullets(&mut add_tent);
 
-                let mut to_delete = vec![];
-                for (i, e) in &mut ((&mut tent).iter_mut().enumerate()) {
-                    if !state.paused {
-                        if let Some(_) = e.animate_temp() {
-                            to_delete.push(i);
-                            continue;
-                        }
-                    }
-                    e.draw_temp(&context, graphics);
-                }
+                state.draw_tents(&context, graphics);
 
-                for i in to_delete.iter().rev() {
-                    tent.remove(*i);
-                    //println!("Deleted tent {} / {}", *i, bullets.len());
-                }
+                state.animate_tents();
 
                 // Right side bar
                 rectangle(
@@ -376,7 +362,12 @@ fn main() -> Result<(), ShooterError> {
                     ]);
                     let transform =
                         (Matrix(context.transform) * Matrix(transl) * Matrix(centerize)).0;
-                    sphere_image.draw(&assets.sphere_tex, &context.draw_state, transform, graphics);
+                    sphere_image.draw(
+                        &*assets.sphere_tex,
+                        &context.draw_state,
+                        transform,
+                        graphics,
+                    );
                     let weapons_image = sphere_image
                         .color(if v.1 == weapon {
                             [1., 1., 1., 1.]
@@ -390,7 +381,7 @@ fn main() -> Result<(), ShooterError> {
                             assets.weapons_tex.get_height() as f64,
                         ]);
                     weapons_image.draw(
-                        &assets.weapons_tex,
+                        &*assets.weapons_tex,
                         &context.draw_state,
                         transform,
                         graphics,
@@ -406,7 +397,7 @@ fn main() -> Result<(), ShooterError> {
                         (WINDOW_HEIGHT - height) as f64,
                     ]);
                     let transform = (Matrix(context.transform) * Matrix(transl)).0;
-                    image(&assets.player_tex, transform, graphics);
+                    image(&*assets.player_tex, transform, graphics);
                 }
             });
         } else {
@@ -471,7 +462,6 @@ fn main() -> Result<(), ShooterError> {
                         Key::Space => {
                             if tf {
                                 state.restart()?;
-                                tent.clear();
                                 shots_bullet = 0;
                                 shots_missile = 0;
                             }

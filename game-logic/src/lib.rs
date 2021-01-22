@@ -93,7 +93,6 @@ pub struct ShooterState {
     pub enemies: Vec<Enemy>,
     pub items: Vec<Item>,
     pub bullets: HashMap<u32, Projectile>,
-    #[cfg(feature = "webgl")]
     pub tent: Vec<TempEntity>,
     pub rng: Xor128,
     pub shots_bullet: usize,
@@ -129,7 +128,6 @@ impl ShooterState {
             enemies: vec![],
             items: vec![],
             bullets: HashMap::new(),
-            #[cfg(feature = "webgl")]
             tent: vec![],
             rng: Xor128::new(3232132),
             shots_bullet: 0,
@@ -585,6 +583,33 @@ impl ShooterState {
             } else {
                 debug_assert!(false, "All keys must exist in bullets");
             }
+        }
+    }
+
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub fn draw_tents(&self, context: &Context, graphics: &mut G2d) {
+        for e in &self.tent {
+            e.draw_temp(&context, graphics);
+        }
+    }
+
+    pub fn animate_tents(&mut self) {
+        if self.paused {
+            return;
+        }
+        let mut to_delete = vec![];
+        for (i, e) in &mut ((&mut self.tent).iter_mut().enumerate()) {
+            if !self.paused {
+                if let Some(_) = e.animate_temp() {
+                    to_delete.push(i);
+                    continue;
+                }
+            }
+        }
+
+        for i in to_delete.iter().rev() {
+            self.tent.remove(*i);
+            //println!("Deleted tent {} / {}", *i, bullets.len());
         }
     }
 }

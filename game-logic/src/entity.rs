@@ -471,23 +471,23 @@ impl Assets {
 
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 pub struct Assets {
-    pub bg: G2dTexture,
-    pub weapons_tex: G2dTexture,
-    pub boss_tex: G2dTexture,
-    pub enemy_tex: G2dTexture,
-    pub spiral_enemy_tex: G2dTexture,
-    pub player_tex: G2dTexture,
-    pub shield_tex: G2dTexture,
-    pub ebullet_tex: G2dTexture,
-    pub phase_bullet_tex: G2dTexture,
-    pub spiral_bullet_tex: G2dTexture,
-    pub bullet_tex: G2dTexture,
-    pub missile_tex: G2dTexture,
-    pub explode_tex: G2dTexture,
-    pub explode2_tex: G2dTexture,
-    pub sphere_tex: G2dTexture,
-    pub power_tex: G2dTexture,
-    pub power2_tex: G2dTexture,
+    pub bg: Rc<G2dTexture>,
+    pub weapons_tex: Rc<G2dTexture>,
+    pub boss_tex: Rc<G2dTexture>,
+    pub enemy_tex: Rc<G2dTexture>,
+    pub spiral_enemy_tex: Rc<G2dTexture>,
+    pub player_tex: Rc<G2dTexture>,
+    pub shield_tex: Rc<G2dTexture>,
+    pub ebullet_tex: Rc<G2dTexture>,
+    pub phase_bullet_tex: Rc<G2dTexture>,
+    pub spiral_bullet_tex: Rc<G2dTexture>,
+    pub bullet_tex: Rc<G2dTexture>,
+    pub missile_tex: Rc<G2dTexture>,
+    pub explode_tex: Rc<G2dTexture>,
+    pub explode2_tex: Rc<G2dTexture>,
+    pub sphere_tex: Rc<G2dTexture>,
+    pub power_tex: Rc<G2dTexture>,
+    pub power2_tex: Rc<G2dTexture>,
 }
 
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
@@ -506,13 +506,15 @@ impl Assets {
         let glyphs = Glyphs::new(font, factory, TextureSettings::new()).unwrap();
 
         let mut load_texture = |name| {
-            Texture::from_path(
-                &mut window.factory,
-                &assets_loader.join(name),
-                Flip::None,
-                &TextureSettings::new(),
+            Rc::new(
+                Texture::from_path(
+                    &mut window.factory,
+                    &assets_loader.join(name),
+                    Flip::None,
+                    &TextureSettings::new(),
+                )
+                .unwrap(),
             )
-            .unwrap()
         };
 
         (
@@ -717,7 +719,7 @@ impl Enemy {
         );
         if let Enemy::ShieldedBoss(ref boss) = self {
             let pos = &boss.base.0.pos;
-            let tex2 = &assets.shield_tex;
+            let tex2 = &*assets.shield_tex;
             let centerize = translate([
                 -(tex2.get_width() as f64 / 2.),
                 -(tex2.get_height() as f64 / 2.),
@@ -1162,9 +1164,9 @@ pub struct TempEntity {
 }
 
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
-pub struct TempEntity<'a> {
+pub struct TempEntity {
     pub base: Entity,
-    pub texture: &'a G2dTexture,
+    pub texture: Rc<G2dTexture>,
     pub max_frames: u32,
     pub width: u32,
     pub playback_rate: u32,
@@ -1213,7 +1215,7 @@ impl TempEntity {
 }
 
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
-impl<'a> TempEntity<'a> {
+impl TempEntity {
     #[allow(dead_code)]
     pub fn max_frames(mut self, max_frames: u32) -> Self {
         self.max_frames = max_frames;
@@ -1226,7 +1228,7 @@ impl<'a> TempEntity<'a> {
 
     pub fn draw_temp(&self, context: &Context, g: &mut G2d) {
         let pos = &self.base.pos;
-        let tex2 = self.texture;
+        let tex2 = &*self.texture;
         let centerize = translate([-(16. / 2.), -(tex2.get_height() as f64 / 2.)]);
         let rotmat = rotate_radians(self.base.rotation as f64);
         let translate = translate(*pos);

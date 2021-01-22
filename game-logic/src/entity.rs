@@ -198,6 +198,42 @@ impl std::fmt::Display for Weapon {
     }
 }
 
+impl Weapon {
+    pub fn next(self) -> Self {
+        use Weapon::*;
+        match self {
+            Bullet => Light,
+            Light => Missile,
+            Missile => Lightning,
+            Lightning => Bullet,
+        }
+    }
+
+    pub fn prev(self) -> Self {
+        use Weapon::*;
+        match self {
+            Bullet => Lightning,
+            Light => Bullet,
+            Missile => Light,
+            Lightning => Missile,
+        }
+    }
+}
+
+#[test]
+fn weapon_rotate() {
+    use Weapon::*;
+    for start in &[Bullet, Light, Missile, Lightning] {
+        assert!(start.next().prev() == *start);
+    }
+    for start in &[Bullet, Light, Missile, Lightning] {
+        assert!(start.next().next().prev().prev() == *start);
+    }
+    for start in &[Bullet, Light, Missile, Lightning] {
+        assert!(start.next().next().next().prev().prev().prev() == *start);
+    }
+}
+
 pub const WEAPON_SET: [(usize, Weapon, [f32; 3]); 4] = [
     (0, Weapon::Bullet, [1., 0.5, 0.]),
     (2, Weapon::Light, [1., 1., 1.]),

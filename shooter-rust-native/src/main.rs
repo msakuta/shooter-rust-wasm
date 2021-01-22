@@ -389,45 +389,12 @@ fn main() -> Result<(), ShooterError> {
                         Key::Space => key_shoot = tf,
                         Key::Z | Key::X => {
                             if !key_change && tf && !state.game_over {
-                                use Weapon::*;
-                                let weapon_names = [
-                                    ("Bullet", Bullet),
-                                    ("Light", Light),
-                                    ("Missile", Missile),
-                                    ("Lightning", Lightning),
-                                ];
-                                let (name, next_weapon) = match state.player.weapon {
-                                    Bullet => {
-                                        if key == Key::X {
-                                            &weapon_names[1]
-                                        } else {
-                                            &weapon_names[3]
-                                        }
-                                    }
-                                    Light => {
-                                        if key == Key::X {
-                                            &weapon_names[2]
-                                        } else {
-                                            &weapon_names[0]
-                                        }
-                                    }
-                                    Missile => {
-                                        if key == Key::X {
-                                            &weapon_names[3]
-                                        } else {
-                                            &weapon_names[1]
-                                        }
-                                    }
-                                    Lightning => {
-                                        if key == Key::X {
-                                            &weapon_names[0]
-                                        } else {
-                                            &weapon_names[2]
-                                        }
-                                    }
+                                state.player.weapon = if key == Key::X {
+                                    state.player.weapon.next()
+                                } else {
+                                    state.player.weapon.prev()
                                 };
-                                state.player.weapon = *next_weapon;
-                                println!("Weapon switched: {}", name);
+                                println!("Weapon switched: {}", state.player.weapon);
                             }
                             key_change = tf;
                         }

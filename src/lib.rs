@@ -91,46 +91,13 @@ impl ShooterState {
             83 | 40 => self.input_state.down_pressed = true,
             88 | 90 => {
                 // Z or X
-                use Weapon::*;
                 let is_x = event.key_code() == 88;
-                let weapon_set = [
-                    ("Bullet", Bullet),
-                    ("Light", Light),
-                    ("Missile", Missile),
-                    ("Lightning", Lightning),
-                ];
-                let (name, next_weapon) = match self.state.player.weapon {
-                    Bullet => {
-                        if is_x {
-                            &weapon_set[1]
-                        } else {
-                            &weapon_set[3]
-                        }
-                    }
-                    Light => {
-                        if is_x {
-                            &weapon_set[2]
-                        } else {
-                            &weapon_set[0]
-                        }
-                    }
-                    Missile => {
-                        if is_x {
-                            &weapon_set[3]
-                        } else {
-                            &weapon_set[1]
-                        }
-                    }
-                    Lightning => {
-                        if is_x {
-                            &weapon_set[0]
-                        } else {
-                            &weapon_set[2]
-                        }
-                    }
+                self.state.player.weapon = if is_x {
+                    self.state.player.weapon.next()
+                } else {
+                    self.state.player.weapon.prev()
                 };
-                self.state.player.weapon = *next_weapon;
-                println!("Weapon switched: {}", name);
+                console_log!("Weapon switched: {}", self.state.player.weapon);
             }
             78 => {
                 // N

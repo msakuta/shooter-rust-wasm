@@ -586,6 +586,13 @@ impl ShooterState {
         }
     }
 
+    #[cfg(feature = "webgl")]
+    pub fn draw_tents(&self, gl: &GL) {
+        for tent in &self.tent {
+            tent.draw_temp(gl, &self.assets);
+        }
+    }
+
     #[cfg(all(not(feature = "webgl"), feature = "piston"))]
     pub fn draw_tents(&self, context: &Context, graphics: &mut G2d) {
         for e in &self.tent {

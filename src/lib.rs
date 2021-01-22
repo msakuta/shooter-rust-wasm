@@ -591,21 +591,9 @@ impl ShooterState {
 
         self.0.animate_bullets(&mut add_tent);
 
-        let mut to_delete = vec![];
-        for (i, e) in &mut ((&mut self.0.tent).iter_mut().enumerate()) {
-            if !self.0.paused {
-                if let Some(_) = e.animate_temp() {
-                    to_delete.push(i);
-                    continue;
-                }
-            }
-            e.draw_temp(&context, &self.0.assets);
-        }
+        self.0.draw_tents(&context);
 
-        for i in to_delete.iter().rev() {
-            self.0.tent.remove(*i);
-            //println!("Deleted tent {} / {}", *i, bullets.len());
-        }
+        self.0.animate_tents();
 
         load_identity(self);
 

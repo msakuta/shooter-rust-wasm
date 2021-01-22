@@ -587,56 +587,9 @@ impl ShooterState {
 
         self.0.animate_enemies();
 
-        for (_, bullet) in &self.0.bullets {
-            bullet.draw(&self.0, &context, &self.0.assets);
-        }
+        self.0.draw_bullets(&context);
 
-        if !self.0.paused {
-            self.0.bullets = std::mem::take(&mut self.0.bullets)
-                .into_iter()
-                .filter_map(|(id, mut bullet)| {
-                    if let Some(reason) =
-                        bullet.animate_bullet(&mut self.0.enemies, &mut self.0.player)
-                    {
-                        match reason {
-                            DeathReason::Killed | DeathReason::HitPlayer => add_tent(
-                                if let Projectile::Missile { .. } = bullet {
-                                    false
-                                } else {
-                                    true
-                                },
-                                &bullet.get_base().0.pos,
-                                &mut self.0,
-                            ),
-                            _ => {}
-                        }
-
-                        if let DeathReason::HitPlayer = reason {
-                            if self.0.player.invtime == 0
-                                && !self.0.game_over
-                                && 0 < self.0.player.lives
-                            {
-                                self.0.player.lives -= 1;
-                                self.0.assets.player_live_icons[self.0.player.lives as usize]
-                                    .set_class_name("hidden");
-                                if self.0.player.lives == 0 {
-                                    self.0.game_over = true;
-                                    let game_over_element =
-                                        document().get_element_by_id("gameOver")?;
-                                    game_over_element.set_class_name("");
-                                } else {
-                                    self.0.player.invtime = PLAYER_INVINCIBLE_TIME;
-                                }
-                            }
-                        }
-
-                        None
-                    } else {
-                        Some((id, bullet))
-                    }
-                })
-                .collect::<HashMap<_, _>>();
-        }
+        self.0.animate_bullets(&mut add_tent);
 
         let mut to_delete = vec![];
         for (i, e) in &mut ((&mut self.0.tent).iter_mut().enumerate()) {

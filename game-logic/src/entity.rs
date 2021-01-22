@@ -501,7 +501,7 @@ impl Assets {
             .for_folder("assets")
             .unwrap();
 
-        let ref font = assets_loader.join("FiraSans-Regular.ttf");
+        let font = &assets_loader.join("FiraSans-Regular.ttf");
         let factory = window.factory.clone();
         let glyphs = Glyphs::new(font, factory, TextureSettings::new()).unwrap();
 

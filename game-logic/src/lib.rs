@@ -510,7 +510,7 @@ impl ShooterState {
 
     #[cfg(all(not(feature = "webgl"), feature = "piston"))]
     pub fn draw_bullets(&self, context: &Context, graphics: &mut G2d, assets: &Assets) {
-        for (_, b) in &self.bullets {
+        for b in self.bullets.values() {
             b.draw(&context, graphics, &assets);
         }
     }

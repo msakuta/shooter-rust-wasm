@@ -20,8 +20,6 @@ fn main() -> Result<(), ShooterError> {
 
     let mut state = ShooterState::new(None);
 
-    let [mut shots_bullet, mut shots_missile] = [0, 0];
-
     let [mut key_up, mut key_down, mut key_left, mut key_right, mut key_shoot, mut key_change, mut key_pause] =
         [false; 7];
 
@@ -44,7 +42,7 @@ fn main() -> Result<(), ShooterError> {
     }
 
     while let Some(event) = window.next() {
-        if let Some(_) = event.render_args() {
+        if event.render_args().is_some() {
             window.draw_2d(&event, |mut context, graphics| {
                 clear([0.0, 0., 0., 1.], graphics);
 
@@ -156,7 +154,7 @@ fn main() -> Result<(), ShooterError> {
                                             return false;
                                         }
                                     }
-                                    return true;
+                                    true
                                 },
                             );
                             let hit = length != LIGHTNING_VERTICES;
@@ -230,12 +228,7 @@ fn main() -> Result<(), ShooterError> {
 
                 rectangle(
                     [0., 0.5, 0.4, 1.],
-                    [
-                        WIDTH as f64,
-                        (3) as f64 * 12.0 + 4.,
-                        state.player.power as f64,
-                        8.,
-                    ],
+                    [WIDTH as f64, 3. * 12.0 + 4., state.player.power as f64, 8.],
                     context.transform,
                     graphics,
                 );
@@ -305,8 +298,8 @@ fn main() -> Result<(), ShooterError> {
                     ),
                     4,
                 );
-                draw_text(&format!("shots_bullet: {}", shots_bullet), 5);
-                draw_text(&format!("shots_missile: {}", shots_missile), 6);
+                draw_text(&format!("shots_bullet: {}", state.shots_bullet), 5);
+                draw_text(&format!("shots_missile: {}", state.shots_missile), 6);
 
                 draw_text_pos(
                     "Z",
@@ -430,7 +423,7 @@ fn main() -> Result<(), ShooterError> {
                                         }
                                     }
                                 };
-                                weapon = next_weapon.clone();
+                                weapon = *next_weapon;
                                 println!("Weapon switched: {}", name);
                             }
                             key_change = tf;
@@ -444,8 +437,8 @@ fn main() -> Result<(), ShooterError> {
                         Key::Space => {
                             if tf {
                                 state.restart()?;
-                                shots_bullet = 0;
-                                shots_missile = 0;
+                                state.shots_bullet = 0;
+                                state.shots_missile = 0;
                             }
                         }
                         Key::G => {

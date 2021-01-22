@@ -1123,10 +1123,10 @@ impl Item {
     }
 
     #[cfg(all(not(feature = "webgl"), feature = "piston"))]
-    pub fn draw(&self, c: &Context, g: &mut G2d, assets: &Assets){
+    pub fn draw(&self, c: &Context, g: &mut G2d, assets: &Assets) {
         match self {
             Item::PowerUp(item) => item.draw_tex(c, g, &assets.power_tex, None),
-            Item::PowerUp10(item) => item.draw_tex(c, g, &assets.power2_tex, None)
+            Item::PowerUp10(item) => item.draw_tex(c, g, &assets.power2_tex, None),
         }
     }
 

@@ -33,8 +33,6 @@ fn main() {
 
     let mut items = Vec::<Item>::new();
 
-    let mut bullets = HashMap::new();
-
     let mut tent = Vec::<TempEntity>::new();
 
     let mut rng = thread_rng();
@@ -155,11 +153,11 @@ fn main() {
                                 if let Weapon::Bullet = weapon {
                                     shots_bullet += 1;
                                     ent = ent.blend(Blend::Add);
-                                    bullets.insert(ent.id, Projectile::Bullet(BulletBase(ent)));
+                                    state.bullets.insert(ent.id, Projectile::Bullet(BulletBase(ent)));
                                 } else {
                                     shots_missile += 1;
                                     ent = ent.health(5);
-                                    bullets.insert(
+                                    state.bullets.insert(
                                         ent.id,
                                         Projectile::Missile {
                                             base: BulletBase(ent),
@@ -384,7 +382,7 @@ fn main() {
                 }
 
                 let mut bullets_to_delete: Vec<u32> = Vec::new();
-                for (i, b) in &mut bullets.iter_mut() {
+                for (i, b) in &mut state.bullets.iter_mut() {
                     if !paused {
                         if let Some(death_reason) = b.animate_bullet(&mut enemies, &mut player) {
                             bullets_to_delete.push(*i);
@@ -422,13 +420,13 @@ fn main() {
                 }
 
                 for i in bullets_to_delete.iter() {
-                    if let Some(b) = bullets.remove(i) {
+                    if let Some(b) = state.bullets.remove(i) {
                         println!(
                             "Deleted {} id={}, {} / {}",
                             b.get_type(),
                             b.get_base().0.id,
                             *i,
-                            bullets.len()
+                            state.bullets.len()
                         );
                     } else {
                         debug_assert!(false, "All keys must exist in bullets");
@@ -681,7 +679,7 @@ fn main() {
                             if tf {
                                 items.clear();
                                 enemies.clear();
-                                bullets.clear();
+                                state.bullets.clear();
                                 tent.clear();
                                 time = 0;
                                 id_gen = 0;

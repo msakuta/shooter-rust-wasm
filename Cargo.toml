@@ -31,6 +31,10 @@ cgmath = "0.18.0"
 vecmath = "1.0.0"
 slice-of-array = "0.2.1"
 
+[dependencies.game-logic]
+path = "game-logic"
+features = ["webgl"]
+
 [dev-dependencies]
 wasm-bindgen-test = "0.3.13"
 

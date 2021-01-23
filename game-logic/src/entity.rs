@@ -2,12 +2,27 @@ use core::f64;
 
 use crate::consts::*;
 use crate::xor128::Xor128;
-use crate::{enable_buffer, vertex_buffer_data, ShooterState};
+use crate::ShooterState;
+#[cfg(feature = "webgl")]
+use crate::{enable_buffer, load_texture, vertex_buffer_data};
+#[cfg(feature = "webgl")]
 use cgmath::{Matrix3, Matrix4, Rad, Vector2, Vector3};
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+use piston_window::{
+    draw_state::Blend,
+    math::{rotate_radians, scale, translate},
+    *,
+};
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+use std::ops::{Add, Mul};
 use std::rc::Rc;
 use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
+#[cfg(feature = "webgl")]
+use wasm_bindgen::JsValue;
+#[cfg(feature = "webgl")]
 use web_sys::{
-    WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlTexture, WebGlUniformLocation,
+    Document, Element, WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlTexture,
+    WebGlUniformLocation,
 };
 
 /// The base structure of all Entities.  Implements common methods.
@@ -18,6 +33,8 @@ pub struct Entity {
     pub health: i32,
     pub rotation: f32,
     pub angular_velocity: f32,
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub blend: Option<Blend>,
 }
 
 #[derive(Debug)]
@@ -27,21 +44,47 @@ pub enum DeathReason {
     HitPlayer,
 }
 
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+// We cannot directly define custom operators on external types, so we wrap the matrix
+// int a tuple struct.
+pub struct Matrix<T>(pub vecmath::Matrix2x3<T>);
+
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+// This is such a silly way to operator overload to enable matrix multiplication with
+// operator *.
+impl<T> Mul for Matrix<T>
+where
+    T: Copy + Add<T, Output = T> + Mul<T, Output = T>,
+{
+    type Output = Self;
+    fn mul(self, o: Self) -> Self {
+        Matrix(vecmath::row_mat2x3_mul(self.0, o.0))
+    }
+}
+
 impl Entity {
     pub fn new(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Self {
         *id_gen += 1;
         Self {
             id: *id_gen,
-            pos: pos,
-            velo: velo,
+            pos,
+            velo,
             health: 1,
             rotation: 0.,
             angular_velocity: 0.,
+            #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+            blend: None,
         }
     }
 
     pub fn health(mut self, health: i32) -> Self {
         self.health = health;
+        self
+    }
+
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub fn blend(mut self, blend: Blend) -> Self {
+        self.blend = Some(blend);
         self
     }
 
@@ -54,9 +97,7 @@ impl Entity {
     /// Otherwise returns Some(reason) where reason is DeathReason.
     pub fn animate(&mut self) -> Option<DeathReason> {
         let pos = &mut self.pos;
-        for i in 0..2 {
-            pos[i] += self.velo[i];
-        }
+        *pos = vec2_add(*pos, self.velo);
         self.rotation += self.angular_velocity;
         if self.health <= 0 {
             Some(DeathReason::Killed)
@@ -73,6 +114,7 @@ impl Entity {
         }
     }
 
+    #[cfg(feature = "webgl")]
     pub fn draw_tex(
         &self,
         assets: &Assets,
@@ -86,7 +128,7 @@ impl Entity {
         let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], 0.));
         let scale_mat = Matrix4::from_scale(scale.unwrap_or(1.));
         let rotation = Matrix4::from_angle_z(Rad(self.rotation as f64));
-        let transform = assets.world_transform * &translation * &scale_mat * &rotation;
+        let transform = assets.world_transform * translation * scale_mat * rotation;
         context.uniform_matrix4fv_with_f32_array(
             shader.transform_loc.as_ref(),
             false,
@@ -94,6 +136,38 @@ impl Entity {
         );
 
         context.draw_arrays(GL::TRIANGLE_FAN, 0, 4);
+    }
+
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub fn draw_tex(
+        &self,
+        context: &Context,
+        g: &mut G2d,
+        texture: &G2dTexture,
+        scale: Option<f64>,
+    ) {
+        let pos = &self.pos;
+        let tex2 = texture;
+        let scale_factor = scale.unwrap_or(1.);
+        let (width, height) = (
+            scale_factor * tex2.get_width() as f64,
+            scale_factor * tex2.get_height() as f64,
+        );
+        let centerize = translate([-(width / 2.), -(height / 2.)]);
+        let rotmat = rotate_radians(self.rotation as f64);
+        let translate = translate(*pos);
+        let draw_state = if let Some(blend_mode) = self.blend {
+            context.draw_state.blend(blend_mode)
+        } else {
+            context.draw_state
+        };
+        let image = Image::new().rect([0., 0., width, height]);
+        image.draw(
+            tex2,
+            &draw_state,
+            (Matrix(context.transform) * Matrix(translate) * Matrix(rotmat) * Matrix(centerize)).0,
+            g,
+        );
     }
 
     pub fn hits_player(&self, player: &Self) -> Option<DeathReason> {
@@ -110,7 +184,7 @@ impl Entity {
     }
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum Weapon {
     Bullet,
     Light,
@@ -118,13 +192,49 @@ pub enum Weapon {
     Lightning,
 }
 
-impl Weapon {
-    pub fn to_string(&self) -> String {
-        format!("{:?}", self)
+impl std::fmt::Display for Weapon {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-pub const weapon_set: [(usize, Weapon, [f32; 3]); 4] = [
+impl Weapon {
+    pub fn next(self) -> Self {
+        use Weapon::*;
+        match self {
+            Bullet => Light,
+            Light => Missile,
+            Missile => Lightning,
+            Lightning => Bullet,
+        }
+    }
+
+    pub fn prev(self) -> Self {
+        use Weapon::*;
+        match self {
+            Bullet => Lightning,
+            Light => Bullet,
+            Missile => Light,
+            Lightning => Missile,
+        }
+    }
+}
+
+#[test]
+fn weapon_rotate() {
+    use Weapon::*;
+    for start in &[Bullet, Light, Missile, Lightning] {
+        assert!(start.next().prev() == *start);
+    }
+    for start in &[Bullet, Light, Missile, Lightning] {
+        assert!(start.next().next().prev().prev() == *start);
+    }
+    for start in &[Bullet, Light, Missile, Lightning] {
+        assert!(start.next().next().next().prev().prev().prev() == *start);
+    }
+}
+
+pub const WEAPON_SET: [(usize, Weapon, [f32; 3]); 4] = [
     (0, Weapon::Bullet, [1., 0.5, 0.]),
     (2, Weapon::Light, [1., 1., 1.]),
     (3, Weapon::Missile, [0., 1., 0.]),
@@ -233,6 +343,7 @@ pub enum Enemy {
     SpiralEnemy(EnemyBase),
 }
 
+#[cfg(feature = "webgl")]
 pub struct ShaderBundle {
     pub program: WebGlProgram,
     pub vertex_position: u32,
@@ -242,6 +353,7 @@ pub struct ShaderBundle {
     pub tex_transform_loc: Option<WebGlUniformLocation>,
 }
 
+#[cfg(feature = "webgl")]
 impl ShaderBundle {
     pub fn new(gl: &GL, program: WebGlProgram) -> Self {
         let vertex_position = gl.get_attrib_location(&program, "vertexData") as u32;
@@ -272,6 +384,7 @@ impl ShaderBundle {
     }
 }
 
+#[cfg(feature = "webgl")]
 pub struct Assets {
     pub world_transform: Matrix4<f64>,
 
@@ -299,6 +412,170 @@ pub struct Assets {
     pub trail_shader: Option<ShaderBundle>,
     pub trail_buffer: Option<WebGlBuffer>,
     pub rect_buffer: Option<WebGlBuffer>,
+
+    pub player_live_icons: Vec<Element>,
+}
+
+#[cfg(feature = "webgl")]
+impl Assets {
+    pub fn new(
+        document: &Document,
+        context: &GL,
+        image_assets: js_sys::Array,
+    ) -> Result<Self, JsValue> {
+        let side_panel = document.get_element_by_id("sidePanel").unwrap();
+
+        let player_live_icons = (0..3)
+            .map(|_| {
+                let lives_icon = document.create_element("img")?;
+                lives_icon.set_attribute(
+                    "src",
+                    &js_sys::Array::from(
+                        &image_assets
+                            .iter()
+                            .find(|value| {
+                                let array = js_sys::Array::from(value);
+                                array.iter().next() == Some(JsValue::from_str("player"))
+                            })
+                            .unwrap(),
+                    )
+                    .to_vec()
+                    .get(1)
+                    .ok_or_else(|| JsValue::from_str("Couldn't find texture"))?
+                    .as_string()
+                    .unwrap(),
+                )?;
+                side_panel.append_child(&lives_icon)?;
+                Ok(lives_icon)
+            })
+            .collect::<Result<Vec<Element>, JsValue>>()?;
+
+        let load_texture_local = |path| -> Result<Rc<WebGlTexture>, JsValue> {
+            if let Some(value) = image_assets.iter().find(|value| {
+                let array = js_sys::Array::from(value);
+                array.iter().next() == Some(JsValue::from_str(path))
+            }) {
+                let array = js_sys::Array::from(&value).to_vec();
+                load_texture(
+                    &context,
+                    &array
+                        .get(1)
+                        .ok_or_else(|| JsValue::from_str("Couldn't find texture"))?
+                        .as_string()
+                        .ok_or_else(|| {
+                            JsValue::from_str(&format!(
+                                "Couldn't convert value to String: {:?}",
+                                path
+                            ))
+                        })?,
+                )
+            } else {
+                Err(JsValue::from_str("Couldn't find texture"))
+            }
+        };
+
+        Ok(Assets {
+            world_transform: Matrix4::from_translation(Vector3::new(-1., 1., 0.))
+                * Matrix4::from_nonuniform_scale(2. / FWIDTH, -2. / FHEIGHT, 1.),
+            enemy_tex: load_texture_local("enemy")?,
+            boss_tex: load_texture_local("boss")?,
+            shield_tex: load_texture_local("shield")?,
+            spiral_enemy_tex: load_texture_local("spiralEnemy")?,
+            player_texture: load_texture_local("player")?,
+            bullet_texture: load_texture_local("bullet")?,
+            enemy_bullet_texture: load_texture_local("ebullet")?,
+            phase_bullet_tex: load_texture_local("phaseBullet")?,
+            spiral_bullet_tex: load_texture_local("spiralBullet")?,
+            missile_tex: load_texture_local("missile")?,
+            explode_tex: load_texture_local("explode")?,
+            explode2_tex: load_texture_local("explode2")?,
+            trail_tex: load_texture_local("trail")?,
+            beam_tex: load_texture_local("beam")?,
+            back_tex: load_texture_local("back")?,
+            power_tex: load_texture_local("power")?,
+            power2_tex: load_texture_local("power2")?,
+            sphere_tex: load_texture_local("sphere")?,
+            weapons_tex: load_texture_local("weapons")?,
+            sprite_shader: None,
+            trail_shader: None,
+            rect_buffer: None,
+            trail_buffer: None,
+            player_live_icons,
+        })
+    }
+}
+
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+pub struct Assets {
+    pub bg: Rc<G2dTexture>,
+    pub weapons_tex: Rc<G2dTexture>,
+    pub boss_tex: Rc<G2dTexture>,
+    pub enemy_tex: Rc<G2dTexture>,
+    pub spiral_enemy_tex: Rc<G2dTexture>,
+    pub player_tex: Rc<G2dTexture>,
+    pub shield_tex: Rc<G2dTexture>,
+    pub ebullet_tex: Rc<G2dTexture>,
+    pub phase_bullet_tex: Rc<G2dTexture>,
+    pub spiral_bullet_tex: Rc<G2dTexture>,
+    pub bullet_tex: Rc<G2dTexture>,
+    pub missile_tex: Rc<G2dTexture>,
+    pub explode_tex: Rc<G2dTexture>,
+    pub explode2_tex: Rc<G2dTexture>,
+    pub sphere_tex: Rc<G2dTexture>,
+    pub power_tex: Rc<G2dTexture>,
+    pub power2_tex: Rc<G2dTexture>,
+}
+
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+impl Assets {
+    pub fn new(window: &mut PistonWindow) -> (Self, Glyphs) {
+        let mut exe_folder = std::env::current_exe().unwrap();
+        exe_folder.pop();
+        println!("exe: {:?}", exe_folder);
+        let assets_loader = find_folder::Search::KidsThenParents(1, 3)
+            .of(exe_folder)
+            .for_folder("assets")
+            .unwrap();
+
+        let font = &assets_loader.join("FiraSans-Regular.ttf");
+        let factory = window.factory.clone();
+        let glyphs = Glyphs::new(font, factory, TextureSettings::new()).unwrap();
+
+        let mut load_texture = |name| {
+            Rc::new(
+                Texture::from_path(
+                    &mut window.factory,
+                    &assets_loader.join(name),
+                    Flip::None,
+                    &TextureSettings::new(),
+                )
+                .unwrap(),
+            )
+        };
+
+        (
+            Self {
+                bg: load_texture("back2.jpg"),
+                weapons_tex: load_texture("weapons.png"),
+                boss_tex: load_texture("boss.png"),
+                enemy_tex: load_texture("enemy.png"),
+                spiral_enemy_tex: load_texture("spiral-enemy.png"),
+                player_tex: load_texture("player.png"),
+                shield_tex: load_texture("shield.png"),
+                ebullet_tex: load_texture("ebullet.png"),
+                phase_bullet_tex: load_texture("phase-bullet.png"),
+                spiral_bullet_tex: load_texture("spiral-bullet.png"),
+                bullet_tex: load_texture("bullet.png"),
+                missile_tex: load_texture("missile.png"),
+                explode_tex: load_texture("explode.png"),
+                explode2_tex: load_texture("explode2.png"),
+                sphere_tex: load_texture("sphere.png"),
+                power_tex: load_texture("power.png"),
+                power2_tex: load_texture("power2.png"),
+            },
+            glyphs,
+        )
+    }
 }
 
 impl Enemy {
@@ -353,9 +630,7 @@ impl Enemy {
     }
 
     pub fn total_health(&self) -> i32 {
-        match self {
-            _ => self.get_base().health,
-        }
+        self.get_base().health
     }
 
     pub fn drop_item(&self, ent: Entity) -> Item {
@@ -376,7 +651,7 @@ impl Enemy {
         if x == 0 {
             use std::f64::consts::PI;
             let bullet_count = 10;
-            let phase_offset = rng.next() * PI;
+            let phase_offset = rng.gen() * PI;
             for i in 0..bullet_count {
                 let angle = 2. * PI * i as f64 / bullet_count as f64 + phase_offset;
                 let eb = create_fn(BulletBase(
@@ -398,14 +673,14 @@ impl Enemy {
                 &mut state.id_gen,
                 &mut state.bullets,
                 &mut state.rng,
-                |base| Projectile::new_phase(base),
+                Projectile::new_phase,
             );
         } else if let Enemy::SpiralEnemy(_) = self {
             self.gen_bullets(
                 &mut state.id_gen,
                 &mut state.bullets,
                 &mut state.rng,
-                |base| Projectile::new_spiral(base),
+                Projectile::new_spiral,
             );
         } else {
             let x: u32 = state.rng.gen_range(0, 64);
@@ -413,7 +688,7 @@ impl Enemy {
                 let eb = Projectile::EnemyBullet(BulletBase(Entity::new(
                     &mut state.id_gen,
                     self.get_base().pos,
-                    [state.rng.next() - 0.5, state.rng.next() - 0.5],
+                    [state.rng.gen() - 0.5, state.rng.gen() - 0.5],
                 )));
                 state.bullets.insert(eb.get_id(), eb);
             }
@@ -434,6 +709,7 @@ impl Enemy {
         }
     }
 
+    #[cfg(feature = "webgl")]
     pub fn draw(&self, _state: &ShooterState, gl: &GL, assets: &Assets) {
         self.get_base().draw_tex(
             assets,
@@ -459,6 +735,52 @@ impl Enemy {
         }
     }
 
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub fn draw(&self, context: &Context, g: &mut G2d, assets: &Assets) {
+        self.get_base().draw_tex(
+            context,
+            g,
+            match self {
+                Enemy::Enemy1(_) => &assets.enemy_tex,
+                Enemy::Boss(_) | Enemy::ShieldedBoss(_) => &assets.boss_tex,
+                Enemy::SpiralEnemy(_) => &assets.spiral_enemy_tex,
+            },
+            if let Enemy::SpiralEnemy(_) = self {
+                Some(0.5)
+            } else {
+                None
+            },
+        );
+        if let Enemy::ShieldedBoss(ref boss) = self {
+            let pos = &boss.base.0.pos;
+            let tex2 = &*assets.shield_tex;
+            let centerize = translate([
+                -(tex2.get_width() as f64 / 2.),
+                -(tex2.get_height() as f64 / 2.),
+            ]);
+            let rotmat = rotate_radians(0 as f64);
+            let scalemat = scale(
+                boss.shield_health as f64 / 64.,
+                boss.shield_health as f64 / 64.,
+            );
+            let translate = translate(*pos);
+            let draw_state = context.draw_state;
+            let image =
+                Image::new().rect([0., 0., tex2.get_width() as f64, tex2.get_height() as f64]);
+            image.draw(
+                tex2,
+                &draw_state,
+                (Matrix(context.transform)
+                    * Matrix(translate)
+                    * Matrix(scalemat)
+                    * Matrix(rotmat)
+                    * Matrix(centerize))
+                .0,
+                g,
+            );
+        }
+    }
+
     pub fn test_hit(&self, rect: [f64; 4]) -> bool {
         let rect2 = self.get_bb();
         rect[0] < rect2[2] && rect2[0] < rect[2] && rect[1] < rect2[3] && rect2[1] < rect[3]
@@ -480,10 +802,7 @@ impl Enemy {
     }
 
     pub fn is_boss(&self) -> bool {
-        match self {
-            Enemy::Boss(_) | Enemy::ShieldedBoss(_) => true,
-            _ => false,
-        }
+        matches!(self, Enemy::Boss(_) | Enemy::ShieldedBoss(_))
     }
 
     pub fn new_spiral(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Enemy {
@@ -515,6 +834,7 @@ pub enum Projectile {
 
 const MISSILE_DETECTION_RANGE: f64 = 256.;
 const MISSILE_HOMING_SPEED: f64 = 0.25;
+#[cfg(feature = "webgl")]
 const MISSILE_TRAIL_WIDTH: f64 = 5.;
 const MISSILE_TRAIL_LENGTH: usize = 20;
 const MISSILE_DAMAGE: i32 = 5;
@@ -538,7 +858,7 @@ impl Projectile {
         }
     }
 
-    pub fn get_base<'b>(&'b self) -> &'b BulletBase {
+    pub fn get_base(&self) -> &BulletBase {
         match &self {
             &Projectile::Bullet(base) | &Projectile::EnemyBullet(base) => base,
             &Projectile::PhaseBullet { base, .. } | &Projectile::SpiralBullet { base, .. } => base,
@@ -548,6 +868,15 @@ impl Projectile {
 
     pub fn get_id(&self) -> u32 {
         self.get_base().0.id
+    }
+
+    pub fn get_type(&self) -> &str {
+        match &self {
+            &Projectile::Bullet(_) | &Projectile::EnemyBullet(_) => "Bullet",
+            &Projectile::PhaseBullet { .. } => "PhaseBullet",
+            &Projectile::SpiralBullet { .. } => "SpiralBullet",
+            &Projectile::Missile { .. } => "Missile",
+        }
     }
 
     fn animate_player_bullet(
@@ -663,7 +992,7 @@ impl Projectile {
                 }
                 trail.push(base.0.pos);
                 let res = Self::animate_player_bullet(base, enemies, player);
-                if let Some(_) = res {
+                if res.is_some() {
                     if let Some(target_enemy) = enemies.iter_mut().find(|e| e.get_id() == *target) {
                         target_enemy.add_predicted_damage(-MISSILE_DAMAGE);
                         println!(
@@ -688,15 +1017,9 @@ impl Projectile {
         ]
     }
 
-    pub fn draw(&self, state: &ShooterState, gl: &GL, assets: &Assets) {
+    #[cfg(feature = "webgl")]
+    pub fn draw(&self, gl: &GL, assets: &Assets) {
         if let Projectile::Missile { trail, .. } = self {
-            let mut iter = trail.iter().enumerate();
-            if let Some(mut prev) = iter.next() {
-                for e in iter {
-                    prev = e;
-                }
-            }
-
             let shader = assets.trail_shader.as_ref().unwrap();
             gl.use_program(Some(&shader.program));
 
@@ -733,7 +1056,7 @@ impl Projectile {
                 },
             );
 
-            vertex_buffer_data(gl, &vertices).unwrap();
+            vertex_buffer_data(gl, &vertices);
 
             gl.uniform_matrix4fv_with_f32_array(
                 shader.transform_loc.as_ref(),
@@ -750,7 +1073,7 @@ impl Projectile {
             gl.draw_arrays(GL::TRIANGLE_STRIP, 0, (vertices.len() / 4) as i32);
 
             // Switch back to sprite shader and buffer
-            gl.use_program(assets.sprite_shader.as_ref().and_then(|o| Some(&o.program)));
+            gl.use_program(assets.sprite_shader.as_ref().map(|o| &o.program));
             enable_buffer(gl, &assets.rect_buffer, 2, shader.vertex_position);
         }
         self.get_base().0.draw_tex(
@@ -764,6 +1087,42 @@ impl Projectile {
                 Projectile::Missile { .. } => &assets.missile_tex,
             },
             Some(BULLET_SIZE),
+        );
+    }
+
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub fn draw(&self, c: &Context, g: &mut G2d, assets: &Assets) {
+        if let Projectile::Missile {
+            base: _,
+            target: _,
+            trail,
+        } = self
+        {
+            let mut iter = trail.iter().enumerate();
+            if let Some(mut prev) = iter.next() {
+                for e in iter {
+                    line(
+                        [0.75, 0.75, 0.75, e.0 as f32 / MISSILE_TRAIL_LENGTH as f32],
+                        e.0 as f64 / MISSILE_TRAIL_LENGTH as f64,
+                        [prev.1[0], prev.1[1], e.1[0], e.1[1]],
+                        c.transform,
+                        g,
+                    );
+                    prev = e;
+                }
+            }
+        }
+        self.get_base().0.draw_tex(
+            c,
+            g,
+            match self {
+                Projectile::Bullet(_) => &assets.bullet_tex,
+                Projectile::EnemyBullet(_) => &assets.ebullet_tex,
+                Projectile::PhaseBullet { .. } => &assets.phase_bullet_tex,
+                Projectile::SpiralBullet { .. } => &assets.spiral_bullet_tex,
+                Projectile::Missile { .. } => &assets.missile_tex,
+            },
+            None,
         );
     }
 }
@@ -780,12 +1139,21 @@ impl Item {
         }
     }
 
+    #[cfg(feature = "webgl")]
     pub fn draw(&self, gl: &GL, assets: &Assets) {
         match self {
             Item::PowerUp(item) => item.draw_tex(&assets, gl, &assets.power_tex, Some(ITEM_SIZE)),
             Item::PowerUp10(item) => {
                 item.draw_tex(&assets, gl, &assets.power2_tex, Some(ITEM2_SIZE))
             }
+        }
+    }
+
+    #[cfg(all(not(feature = "webgl"), feature = "piston"))]
+    pub fn draw(&self, c: &Context, g: &mut G2d, assets: &Assets) {
+        match self {
+            Item::PowerUp(item) => item.draw_tex(c, g, &assets.power_tex, None),
+            Item::PowerUp10(item) => item.draw_tex(c, g, &assets.power2_tex, None),
         }
     }
 
@@ -799,7 +1167,7 @@ impl Item {
     pub fn animate(&mut self, player: &mut Player) -> Option<DeathReason> {
         match self {
             Item::PowerUp(ent) | Item::PowerUp10(ent) => {
-                if let Some(_) = ent.hits_player(&player.base) {
+                if ent.hits_player(&player.base).is_some() {
                     player.power += self.power_value();
                     return Some(DeathReason::Killed);
                 }
@@ -809,6 +1177,7 @@ impl Item {
     }
 }
 
+#[cfg(feature = "webgl")]
 pub struct TempEntity {
     pub base: Entity,
     pub texture: Rc<WebGlTexture>,
@@ -819,6 +1188,16 @@ pub struct TempEntity {
     pub size: f64,
 }
 
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+pub struct TempEntity {
+    pub base: Entity,
+    pub texture: Rc<G2dTexture>,
+    pub max_frames: u32,
+    pub width: u32,
+    pub playback_rate: u32,
+}
+
+#[cfg(feature = "webgl")]
 impl TempEntity {
     #[allow(dead_code)]
     pub fn max_frames(mut self, max_frames: u32) -> Self {
@@ -840,7 +1219,7 @@ impl TempEntity {
         let frame = self.max_frames - (self.base.health as u32 / self.playback_rate) as u32;
         // let image   = Image::new().rect([0f64, 0f64, self.width as f64, tex2.get_height() as f64])
         //     .src_rect([frame as f64 * self.width as f64, 0., self.width as f64, tex2.get_height() as f64]);
-        let transform = assets.world_transform * &translation * &rotation * &scale;
+        let transform = assets.world_transform * translation * rotation * scale;
         context.uniform_matrix4fv_with_f32_array(
             shader.transform_loc.as_ref(),
             false,
@@ -857,5 +1236,46 @@ impl TempEntity {
         );
 
         context.draw_arrays(GL::TRIANGLE_FAN, 0, 4);
+    }
+}
+
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+impl TempEntity {
+    #[allow(dead_code)]
+    pub fn max_frames(mut self, max_frames: u32) -> Self {
+        self.max_frames = max_frames;
+        self
+    }
+    pub fn animate_temp(&mut self) -> Option<DeathReason> {
+        self.base.health -= 1;
+        self.base.animate()
+    }
+
+    pub fn draw_temp(&self, context: &Context, g: &mut G2d) {
+        let pos = &self.base.pos;
+        let tex2 = &*self.texture;
+        let centerize = translate([-(16. / 2.), -(tex2.get_height() as f64 / 2.)]);
+        let rotmat = rotate_radians(self.base.rotation as f64);
+        let translate = translate(*pos);
+        let frame = self.max_frames - (self.base.health as u32 / self.playback_rate) as u32;
+        let draw_state = if let Some(blend_mode) = self.base.blend {
+            context.draw_state.blend(blend_mode)
+        } else {
+            context.draw_state
+        };
+        let image = Image::new()
+            .rect([0f64, 0f64, self.width as f64, tex2.get_height() as f64])
+            .src_rect([
+                frame as f64 * self.width as f64,
+                0.,
+                self.width as f64,
+                tex2.get_height() as f64,
+            ]);
+        image.draw(
+            tex2,
+            &draw_state,
+            (Matrix(context.transform) * Matrix(translate) * Matrix(rotmat) * Matrix(centerize)).0,
+            g,
+        );
     }
 }

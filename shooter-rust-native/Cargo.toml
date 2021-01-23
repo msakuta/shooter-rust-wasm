@@ -12,6 +12,7 @@ piston2d-sprite = "0.50.0"
 piston2d-gfx_graphics = "0.56.0"
 gfx_device_gl = "0.15.5"
 rand = "0.5.6"
+fps_counter = "2.0.0"
 
 [dependencies.vecmath]
 

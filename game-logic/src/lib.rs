@@ -178,11 +178,20 @@ impl ShooterState {
         length
     }
 
-    pub fn lightning(&mut self, seed: u32, f: &mut dyn FnMut(&mut Self, u32)) {
-        let nmax = std::cmp::min(
-            (self.player.power_level() as usize + 1 + self.time % 2) / 2,
-            31,
-        );
+    pub fn lightning(
+        &mut self,
+        seed: u32,
+        nmax: Option<usize>,
+        f: &mut dyn FnMut(&mut Self, u32),
+    ) -> usize {
+        let nmax = if let Some(v) = nmax {
+            v
+        } else {
+            std::cmp::min(
+                (self.player.power_level() as usize + 1 + self.time % 2) / 2,
+                31,
+            )
+        };
         let mut branch_rng = Xor128::new(seed);
 
         for _ in 0..nmax {
@@ -191,6 +200,8 @@ impl ShooterState {
 
             f(self, seed);
         }
+
+        nmax
     }
 
     pub fn try_shoot(
@@ -198,7 +209,7 @@ impl ShooterState {
         key_shoot: bool,
         seed: u32,
         add_tent: &mut impl FnMut(bool, &[f64; 2], &mut ShooterState),
-    ) {
+    ) -> usize {
         let weapon = self.player.weapon;
         let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
 
@@ -254,7 +265,7 @@ impl ShooterState {
             }
             self.enemies = enemies;
         } else if Weapon::Lightning == weapon && key_shoot {
-            self.lightning(seed, &mut |state, seed| {
+            return self.lightning(seed, None, &mut |state, seed| {
                 state.lightning_branch(
                     seed,
                     LIGHTNING_VERTICES,
@@ -277,6 +288,7 @@ impl ShooterState {
                 );
             });
         }
+        0
     }
 
     /// Generate enemies in this frame.

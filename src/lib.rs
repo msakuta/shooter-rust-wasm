@@ -382,6 +382,7 @@ impl ShooterState {
 
                     self.state.lightning(
                         seed,
+                        None,
                         &mut |state: &mut game_logic::ShooterState, seed| {
                             let length = state.lightning_branch(
                                 seed,
@@ -426,7 +427,7 @@ impl ShooterState {
                                         prev_node_opt = Some([segment[0], segment[1]]);
                                         return true;
                                     };
-                                    let width = if hit { 2. } else { 1. };
+                                    let width = if hit { 5. } else { 1. };
                                     let this_node = [segment[0], segment[1]];
                                     let delta = vec2_normalized(vec2_sub(this_node, prev_node));
                                     let perp = vec2_scale([delta[1], -delta[0]], width);

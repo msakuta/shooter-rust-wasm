@@ -544,7 +544,7 @@ impl ShooterState {
                 &self.assets,
                 &context,
                 &self.assets.player_texture,
-                Some(PLAYER_SIZE),
+                Some([PLAYER_SIZE; 2]),
             );
         }
 

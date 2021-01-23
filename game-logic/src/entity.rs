@@ -120,15 +120,16 @@ impl Entity {
         assets: &Assets,
         context: &GL,
         texture: &WebGlTexture,
-        scale: Option<f64>,
+        scale: Option<[f64; 2]>,
     ) {
         let shader = assets.sprite_shader.as_ref().unwrap();
         context.bind_texture(GL::TEXTURE_2D, Some(&texture));
         let pos = &self.pos;
         let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], 0.));
-        let scale_mat = Matrix4::from_scale(scale.unwrap_or(1.));
         let rotation = Matrix4::from_angle_z(Rad(self.rotation as f64));
-        let transform = assets.world_transform * translation * scale_mat * rotation;
+        let scale = scale.unwrap_or([1., 1.]);
+        let scale_mat = Matrix4::from_nonuniform_scale(scale[0], scale[1], 1.);
+        let transform = assets.world_transform * translation * rotation * scale_mat;
         context.uniform_matrix4fv_with_f32_array(
             shader.transform_loc.as_ref(),
             false,
@@ -720,8 +721,8 @@ impl Enemy {
                 Enemy::SpiralEnemy(_) => &assets.spiral_enemy_tex,
             },
             Some(match self {
-                Enemy::Enemy1(_) => ENEMY_SIZE,
-                Enemy::Boss(_) | Enemy::ShieldedBoss(_) | Enemy::SpiralEnemy(_) => BOSS_SIZE,
+                Enemy::Enemy1(_) => [ENEMY_SIZE; 2],
+                Enemy::Boss(_) | Enemy::ShieldedBoss(_) | Enemy::SpiralEnemy(_) => [BOSS_SIZE; 2],
             }),
         );
 
@@ -730,7 +731,7 @@ impl Enemy {
                 assets,
                 gl,
                 &assets.shield_tex,
-                Some(boss.shield_health as f64),
+                Some([boss.shield_health as f64; 2]),
             );
         }
     }
@@ -1076,17 +1077,21 @@ impl Projectile {
             gl.use_program(assets.sprite_shader.as_ref().map(|o| &o.program));
             enable_buffer(gl, &assets.rect_buffer, 2, shader.vertex_position);
         }
+        use Projectile::*;
         self.get_base().0.draw_tex(
             assets,
             gl,
             match self {
-                Projectile::Bullet(_) => &assets.bullet_texture,
-                Projectile::EnemyBullet(_) => &assets.enemy_bullet_texture,
-                Projectile::PhaseBullet { .. } => &assets.phase_bullet_tex,
-                Projectile::SpiralBullet { .. } => &assets.spiral_bullet_tex,
-                Projectile::Missile { .. } => &assets.missile_tex,
+                Bullet(_) => &assets.bullet_texture,
+                EnemyBullet(_) => &assets.enemy_bullet_texture,
+                PhaseBullet { .. } => &assets.phase_bullet_tex,
+                SpiralBullet { .. } => &assets.spiral_bullet_tex,
+                Missile { .. } => &assets.missile_tex,
             },
-            Some(BULLET_SIZE),
+            Some(match self {
+                Bullet(_) | EnemyBullet(_) | Missile { .. } => [BULLET_SIZE; 2],
+                PhaseBullet { .. } | SpiralBullet { .. } => LONG_BULLET_SIZE,
+            }),
         );
     }
 
@@ -1142,9 +1147,11 @@ impl Item {
     #[cfg(feature = "webgl")]
     pub fn draw(&self, gl: &GL, assets: &Assets) {
         match self {
-            Item::PowerUp(item) => item.draw_tex(&assets, gl, &assets.power_tex, Some(ITEM_SIZE)),
+            Item::PowerUp(item) => {
+                item.draw_tex(&assets, gl, &assets.power_tex, Some([ITEM_SIZE; 2]))
+            }
             Item::PowerUp10(item) => {
-                item.draw_tex(&assets, gl, &assets.power2_tex, Some(ITEM2_SIZE))
+                item.draw_tex(&assets, gl, &assets.power2_tex, Some([ITEM2_SIZE; 2]))
             }
         }
     }

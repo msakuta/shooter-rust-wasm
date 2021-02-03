@@ -13,6 +13,7 @@ use piston_window::{
     math::{rotate_radians, scale, translate},
     *,
 };
+use rotate_enum::RotateEnum;
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use std::ops::{Add, Mul};
 use std::rc::Rc;
@@ -185,7 +186,7 @@ impl Entity {
     }
 }
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug, RotateEnum)]
 pub enum Weapon {
     Bullet,
     Light,
@@ -196,28 +197,6 @@ pub enum Weapon {
 impl std::fmt::Display for Weapon {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
-    }
-}
-
-impl Weapon {
-    pub fn next(self) -> Self {
-        use Weapon::*;
-        match self {
-            Bullet => Light,
-            Light => Missile,
-            Missile => Lightning,
-            Lightning => Bullet,
-        }
-    }
-
-    pub fn prev(self) -> Self {
-        use Weapon::*;
-        match self {
-            Bullet => Lightning,
-            Light => Bullet,
-            Missile => Light,
-            Lightning => Missile,
-        }
     }
 }
 

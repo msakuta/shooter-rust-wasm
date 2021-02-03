@@ -352,35 +352,34 @@ pub struct ShaderBundle {
     pub texture_loc: Option<WebGlUniformLocation>,
     pub transform_loc: Option<WebGlUniformLocation>,
     pub tex_transform_loc: Option<WebGlUniformLocation>,
+    pub alpha_loc: Option<WebGlUniformLocation>,
 }
 
 #[cfg(feature = "webgl")]
 impl ShaderBundle {
     pub fn new(gl: &GL, program: WebGlProgram) -> Self {
+        let get_uniform = |location: &str| {
+            let op: Option<WebGlUniformLocation> = gl.get_uniform_location(&program, location);
+            if op.is_none() {
+                console_log!("Warning: location {} undefined", location);
+            } else {
+                console_log!("location {} defined", location);
+            }
+            op
+        };
         let vertex_position = gl.get_attrib_location(&program, "vertexData") as u32;
         let tex_coord_position = gl.get_attrib_location(&program, "vertexData") as u32;
-        let texture_loc = gl.get_uniform_location(&program, "texture");
-        let transform_loc = gl.get_uniform_location(&program, "transform");
-        let tex_transform_loc = gl.get_uniform_location(&program, "texTransform");
-        let check_none = |op: &Option<WebGlUniformLocation>| {
-            if op.is_none() {
-                console_log!("Warning: location undefined");
-            } else {
-                console_log!("location defined");
-            }
-        };
         console_log!("vertex_position: {}", vertex_position);
         console_log!("tex_coord_position: {}", tex_coord_position);
-        check_none(&texture_loc);
-        check_none(&transform_loc);
-        check_none(&tex_transform_loc);
         Self {
-            program,
             vertex_position,
             tex_coord_position,
-            texture_loc,
-            transform_loc,
-            tex_transform_loc,
+            texture_loc: get_uniform("texture"),
+            transform_loc: get_uniform("transform"),
+            tex_transform_loc: get_uniform("texTransform"),
+            alpha_loc: get_uniform("alpha"),
+            // Program has to be later than others
+            program,
         }
     }
 }
@@ -399,6 +398,7 @@ pub struct Assets {
     pub phase_bullet_tex: Rc<WebGlTexture>,
     pub spiral_bullet_tex: Rc<WebGlTexture>,
     pub missile_tex: Rc<WebGlTexture>,
+    pub red_glow_tex: Rc<WebGlTexture>,
     pub explode_tex: Rc<WebGlTexture>,
     pub explode2_tex: Rc<WebGlTexture>,
     pub trail_tex: Rc<WebGlTexture>,
@@ -488,6 +488,7 @@ impl Assets {
             phase_bullet_tex: load_texture_local("phaseBullet")?,
             spiral_bullet_tex: load_texture_local("spiralBullet")?,
             missile_tex: load_texture_local("missile")?,
+            red_glow_tex: load_texture_local("redGlow")?,
             explode_tex: load_texture_local("explode")?,
             explode2_tex: load_texture_local("explode2")?,
             trail_tex: load_texture_local("trail")?,
@@ -1020,6 +1021,24 @@ impl Projectile {
 
     #[cfg(feature = "webgl")]
     pub fn draw(&self, gl: &GL, assets: &Assets) {
+        if let Projectile::Bullet(base) = self {
+            if let Some(ref shader) = assets.sprite_shader.as_ref() {
+                gl.blend_equation(GL::FUNC_ADD);
+                gl.blend_func(GL::SRC_ALPHA, GL::ONE);
+                gl.uniform1f(shader.alpha_loc.as_ref(), 0.15);
+
+                base.0.draw_tex(
+                    assets,
+                    gl,
+                    &assets.red_glow_tex,
+                    Some([BULLET_SIZE * 4.; 2]),
+                );
+
+                gl.blend_equation(GL::FUNC_ADD);
+                gl.blend_func(GL::SRC_ALPHA, GL::ONE_MINUS_SRC_ALPHA);
+                gl.uniform1f(shader.alpha_loc.as_ref(), 1.);
+            }
+        }
         if let Projectile::Missile { trail, .. } = self {
             let shader = assets.trail_shader.as_ref().unwrap();
             gl.use_program(Some(&shader.program));

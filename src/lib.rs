@@ -167,10 +167,11 @@ impl ShooterState {
             varying vec2 texCoords;
 
             uniform sampler2D texture;
+            uniform float alpha;
 
             void main() {
                 vec4 texColor = texture2D( texture, vec2(texCoords.x, texCoords.y) );
-                gl_FragColor = texColor;
+                gl_FragColor = vec4(texColor.rgb, texColor.a * alpha);
             }
         "#,
         )?;
@@ -182,6 +183,7 @@ impl ShooterState {
         context.active_texture(GL::TEXTURE0);
 
         context.uniform1i(shader.texture_loc.as_ref(), 0);
+        context.uniform1f(shader.alpha_loc.as_ref(), 1.);
 
         context.enable(GL::BLEND);
         context.blend_equation(GL::FUNC_ADD);

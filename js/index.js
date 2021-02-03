@@ -8,6 +8,7 @@ import boss from "../assets/boss.png";
 import shield from "../assets/shield.png";
 import spiralEnemy from "../assets/spiral-enemy.png";
 import missile from "../assets/missile.png";
+import redGlow from "../assets/red-glow.png";
 import explode from "../assets/explode.png";
 import explode2 from "../assets/explode2.png";
 import trail from "../assets/trail.png";
@@ -80,6 +81,7 @@ rust
       ["shield", shield],
       ["spiralEnemy", spiralEnemy],
       ["missile", missile],
+      ["redGlow", redGlow],
       ["explode", explode],
       ["explode2", explode2],
       ["trail", trail],

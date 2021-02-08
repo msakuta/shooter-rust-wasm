@@ -291,6 +291,13 @@ impl Player {
 
 pub struct EnemyBase(pub Entity, pub i32);
 
+impl std::ops::Deref for EnemyBase {
+    type Target = Entity;
+    fn deref(&self) -> &Entity {
+        &self.0
+    }
+}
+
 impl EnemyBase {
     pub fn new(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Self {
         Self(Entity::new(id_gen, pos, velo).health(64), 0)
@@ -560,17 +567,17 @@ impl Assets {
 }
 
 impl std::ops::Deref for Enemy {
-    type Target = Entity;
-    fn deref(&self) -> &Entity {
+    type Target = EnemyBase;
+    fn deref(&self) -> &EnemyBase {
         match self {
-            Enemy::Enemy1(base) | Enemy::Boss(base) | Enemy::SpiralEnemy(base) => &base.0,
-            Enemy::ShieldedBoss(boss) => &boss.base.0,
+            Enemy::Enemy1(base) | Enemy::Boss(base) | Enemy::SpiralEnemy(base) => &base,
+            Enemy::ShieldedBoss(boss) => &boss.base,
         }
     }
 }
 
-impl Enemy {
-    pub fn get_base_mut(&mut self) -> &mut EnemyBase {
+impl std::ops::DerefMut for Enemy {
+    fn deref_mut(&mut self) -> &mut EnemyBase {
         match self {
             Enemy::Enemy1(ref mut base)
             | Enemy::Boss(ref mut base)
@@ -578,7 +585,9 @@ impl Enemy {
             Enemy::ShieldedBoss(ref mut boss) => &mut boss.base,
         }
     }
+}
 
+impl Enemy {
     pub fn get_id(&self) -> u32 {
         self.id
     }
@@ -609,8 +618,7 @@ impl Enemy {
     }
 
     pub fn add_predicted_damage(&mut self, val: i32) {
-        let e = self.get_base_mut();
-        e.1 += val;
+        self.1 += val;
     }
 
     pub fn total_health(&self) -> i32 {

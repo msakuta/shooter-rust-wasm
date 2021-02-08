@@ -1,6 +1,6 @@
-use std::rc::Rc;
-use crate::{load_texture, consts::*};
+use crate::{consts::*, load_texture};
 use cgmath::{Matrix4, Vector3};
+use std::rc::Rc;
 use wasm_bindgen::JsValue;
 use web_sys::{
     Document, Element, WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlTexture,

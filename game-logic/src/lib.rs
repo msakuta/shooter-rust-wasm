@@ -53,22 +53,22 @@ macro_rules! js_err {
     }
 }
 
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+pub mod assets_piston;
+#[cfg(feature = "webgl")]
+pub mod assets_webgl;
 pub mod consts;
 pub mod entity;
 pub mod xor128;
-#[cfg(feature = "webgl")]
-pub mod assets_webgl;
-#[cfg(all(not(feature = "webgl"), feature = "piston"))]
-pub mod assets_piston;
 
-use crate::consts::*;
-#[cfg(feature = "webgl")]
-use crate::assets_webgl::Assets;
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use crate::assets_piston::Assets;
+#[cfg(feature = "webgl")]
+use crate::assets_webgl::Assets;
+use crate::consts::*;
 use crate::entity::{
-    BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Player, Projectile,
-    ShieldedBoss, TempEntity, Weapon,
+    BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Player, Projectile, ShieldedBoss,
+    TempEntity, Weapon,
 };
 use xor128::Xor128;
 
@@ -438,12 +438,7 @@ impl ShooterState {
 
         for i in to_delete.iter().rev() {
             let dead = self.items.remove(*i);
-            println!(
-                "Deleted Item id={}: {} / {}",
-                dead.id,
-                *i,
-                self.items.len()
-            );
+            println!("Deleted Item id={}: {} / {}", dead.id, *i, self.items.len());
         }
     }
 

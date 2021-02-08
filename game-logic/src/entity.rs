@@ -1,5 +1,9 @@
 use core::f64;
 
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+use crate::assets_piston::Assets;
+#[cfg(feature = "webgl")]
+use crate::assets_webgl::Assets;
 use crate::consts::*;
 use crate::xor128::Xor128;
 use crate::ShooterState;
@@ -16,18 +20,13 @@ use piston_window::{
 use rotate_enum::RotateEnum;
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use std::ops::{Add, Mul};
-use std::{ ops::{Deref, DerefMut}, rc::Rc };
+use std::{
+    ops::{Deref, DerefMut},
+    rc::Rc,
+};
 use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
 #[cfg(feature = "webgl")]
-use web_sys::{
-    WebGlRenderingContext as GL, WebGlTexture,
-};
-#[cfg(feature = "webgl")]
-use crate::assets_webgl::Assets;
-#[cfg(all(not(feature = "webgl"), feature = "piston"))]
-use crate::assets_piston::Assets;
-
-
+use web_sys::{WebGlRenderingContext as GL, WebGlTexture};
 
 /// The base structure of all Entities.  Implements common methods.
 pub struct Entity {
@@ -292,22 +291,34 @@ impl Player {
     }
 }
 
-pub struct EnemyBase(pub Entity, pub i32);
+pub struct EnemyBase {
+    pub base: Entity,
+    pub predicted_damage: i32,
+}
 
 impl Deref for EnemyBase {
     type Target = Entity;
     fn deref(&self) -> &Entity {
-        &self.0
+        &self.base
+    }
+}
+
+impl DerefMut for EnemyBase {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.base
     }
 }
 
 impl EnemyBase {
     pub fn new(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Self {
-        Self(Entity::new(id_gen, pos, velo).health(64), 0)
+        Self {
+            base: Entity::new(id_gen, pos, velo).health(64),
+            predicted_damage: 0,
+        }
     }
 
-    pub fn health(mut self, val: i32) -> Self {
-        self.0 = self.0.health(val);
+    pub fn health(mut self, health: i32) -> Self {
+        self.base.health = health;
         self
     }
 }
@@ -320,7 +331,10 @@ pub struct ShieldedBoss {
 impl ShieldedBoss {
     pub fn new(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Self {
         Self {
-            base: EnemyBase(Entity::new(id_gen, pos, velo).health(64), 0),
+            base: EnemyBase {
+                base: Entity::new(id_gen, pos, velo).health(64),
+                predicted_damage: 0,
+            },
             shield_health: 64,
         }
     }
@@ -332,8 +346,6 @@ pub enum Enemy {
     ShieldedBoss(ShieldedBoss),
     SpiralEnemy(EnemyBase),
 }
-
-
 
 impl Deref for Enemy {
     type Target = EnemyBase;
@@ -366,12 +378,12 @@ impl Enemy {
             Enemy::Enemy1(ref mut base)
             | Enemy::Boss(ref mut base)
             | Enemy::SpiralEnemy(ref mut base) => {
-                base.0.health -= val;
-                console_log!("damaged: {}", base.0.health);
+                base.base.health -= val;
+                console_log!("damaged: {}", base.health);
             }
             Enemy::ShieldedBoss(ref mut boss) => {
                 if boss.shield_health < 16 {
-                    boss.base.0.health -= val
+                    boss.base.health -= val
                 } else {
                     boss.shield_health -= val
                 }
@@ -381,13 +393,15 @@ impl Enemy {
 
     pub fn predicted_damage(&self) -> i32 {
         match self {
-            Enemy::Enemy1(base) | Enemy::Boss(base) | Enemy::SpiralEnemy(base) => base.1,
-            Enemy::ShieldedBoss(boss) => boss.base.1,
+            Enemy::Enemy1(base) | Enemy::Boss(base) | Enemy::SpiralEnemy(base) => {
+                base.predicted_damage
+            }
+            Enemy::ShieldedBoss(boss) => boss.base.predicted_damage,
         }
     }
 
     pub fn add_predicted_damage(&mut self, val: i32) {
-        self.1 += val;
+        self.predicted_damage += val;
     }
 
     pub fn total_health(&self) -> i32 {
@@ -416,12 +430,8 @@ impl Enemy {
             for i in 0..bullet_count {
                 let angle = 2. * PI * i as f64 / bullet_count as f64 + phase_offset;
                 let eb = create_fn(BulletBase(
-                    Entity::new(
-                        id_gen,
-                        self.pos,
-                        vec2_scale([angle.cos(), angle.sin()], 1.),
-                    )
-                    .rotation(angle as f32),
+                    Entity::new(id_gen, self.pos, vec2_scale([angle.cos(), angle.sin()], 1.))
+                        .rotation(angle as f32),
                 ));
                 bullets.insert(eb.get_id(), eb);
             }
@@ -456,16 +466,16 @@ impl Enemy {
         }
 
         match self {
-            Enemy::Enemy1(ref mut base) | Enemy::Boss(ref mut base) => base.0.animate(),
+            Enemy::Enemy1(ref mut base) | Enemy::Boss(ref mut base) => base.animate(),
             Enemy::ShieldedBoss(ref mut boss) => {
                 if boss.shield_health < 64 && state.time % 8 == 0 {
                     boss.shield_health += 1;
                 }
-                boss.base.0.animate()
+                boss.base.animate()
             }
             Enemy::SpiralEnemy(ref mut base) => {
-                base.0.rotation -= std::f32::consts::PI * 0.01;
-                base.0.animate()
+                base.rotation -= std::f32::consts::PI * 0.01;
+                base.animate()
             }
         }
     }
@@ -513,7 +523,7 @@ impl Enemy {
             },
         );
         if let Enemy::ShieldedBoss(ref boss) = self {
-            let pos = &boss.base.0.pos;
+            let pos = &boss.base.pos;
             let tex2 = &*assets.shield_tex;
             let centerize = translate([
                 -(tex2.get_width() as f64 / 2.),
@@ -597,7 +607,9 @@ impl Deref for Projectile {
     fn deref(&self) -> &Entity {
         match &self {
             &Projectile::Bullet(base) | &Projectile::EnemyBullet(base) => &base.0,
-            &Projectile::PhaseBullet { base, .. } | &Projectile::SpiralBullet { base, .. } => &base.0,
+            &Projectile::PhaseBullet { base, .. } | &Projectile::SpiralBullet { base, .. } => {
+                &base.0
+            }
             &Projectile::Missile { base, .. } => &base.0,
         }
     }
@@ -628,7 +640,6 @@ impl Projectile {
             traveled: 0.,
         }
     }
-
 
     pub fn get_id(&self) -> u32 {
         self.id

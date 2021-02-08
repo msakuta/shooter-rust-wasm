@@ -1,6 +1,5 @@
-use std::rc::Rc;
 use piston_window::*;
-
+use std::rc::Rc;
 
 pub struct Assets {
     pub bg: Rc<G2dTexture>,

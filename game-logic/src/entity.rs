@@ -16,7 +16,7 @@ use piston_window::{
 use rotate_enum::RotateEnum;
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use std::ops::{Add, Mul};
-use std::rc::Rc;
+use std::{ ops::{Deref, DerefMut}, rc::Rc };
 use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
 #[cfg(feature = "webgl")]
 use wasm_bindgen::JsValue;
@@ -291,7 +291,7 @@ impl Player {
 
 pub struct EnemyBase(pub Entity, pub i32);
 
-impl std::ops::Deref for EnemyBase {
+impl Deref for EnemyBase {
     type Target = Entity;
     fn deref(&self) -> &Entity {
         &self.0
@@ -566,7 +566,7 @@ impl Assets {
     }
 }
 
-impl std::ops::Deref for Enemy {
+impl Deref for Enemy {
     type Target = EnemyBase;
     fn deref(&self) -> &EnemyBase {
         match self {
@@ -576,7 +576,7 @@ impl std::ops::Deref for Enemy {
     }
 }
 
-impl std::ops::DerefMut for Enemy {
+impl DerefMut for Enemy {
     fn deref_mut(&mut self) -> &mut EnemyBase {
         match self {
             Enemy::Enemy1(ref mut base)
@@ -823,6 +823,17 @@ pub enum Projectile {
     },
 }
 
+impl Deref for Projectile {
+    type Target = Entity;
+    fn deref(&self) -> &Entity {
+        match &self {
+            &Projectile::Bullet(base) | &Projectile::EnemyBullet(base) => &base.0,
+            &Projectile::PhaseBullet { base, .. } | &Projectile::SpiralBullet { base, .. } => &base.0,
+            &Projectile::Missile { base, .. } => &base.0,
+        }
+    }
+}
+
 const MISSILE_DETECTION_RANGE: f64 = 256.;
 const MISSILE_HOMING_SPEED: f64 = 0.25;
 #[cfg(feature = "webgl")]
@@ -849,16 +860,9 @@ impl Projectile {
         }
     }
 
-    pub fn get_base(&self) -> &BulletBase {
-        match &self {
-            &Projectile::Bullet(base) | &Projectile::EnemyBullet(base) => base,
-            &Projectile::PhaseBullet { base, .. } | &Projectile::SpiralBullet { base, .. } => base,
-            &Projectile::Missile { base, .. } => base,
-        }
-    }
 
     pub fn get_id(&self) -> u32 {
-        self.get_base().0.id
+        self.id
     }
 
     pub fn get_type(&self) -> &str {
@@ -1084,7 +1088,7 @@ impl Projectile {
             enable_buffer(gl, &assets.rect_buffer, 2, shader.vertex_position);
         }
         use Projectile::*;
-        self.get_base().0.draw_tex(
+        self.draw_tex(
             assets,
             gl,
             match self {
@@ -1123,7 +1127,7 @@ impl Projectile {
                 }
             }
         }
-        self.get_base().0.draw_tex(
+        self.draw_tex(
             c,
             g,
             match self {
@@ -1143,7 +1147,7 @@ pub enum Item {
     PowerUp10(Entity),
 }
 
-impl std::ops::Deref for Item {
+impl Deref for Item {
     type Target = Entity;
     fn deref(&self) -> &Entity {
         match self {

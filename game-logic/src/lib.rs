@@ -529,11 +529,9 @@ impl ShooterState {
                 if let Some(death_reason) = b.animate_bullet(&mut self.enemies, &mut self.player) {
                     bullets_to_delete.push(*i);
 
-                    let base = b.get_base();
-
                     match death_reason {
                         DeathReason::Killed | DeathReason::HitPlayer => {
-                            add_tent(!matches!(b, Projectile::Missile { .. }), &base.0.pos, self)
+                            add_tent(!matches!(b, Projectile::Missile { .. }), &b.pos, self)
                         }
                         _ => {}
                     }
@@ -559,7 +557,7 @@ impl ShooterState {
                 println!(
                     "Deleted {} id={}, {} / {}",
                     b.get_type(),
-                    b.get_base().0.id,
+                    b.id,
                     *i,
                     self.bullets.len()
                 );

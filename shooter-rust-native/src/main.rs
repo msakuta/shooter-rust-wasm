@@ -1,7 +1,8 @@
 use fps_counter::FPSCounter;
 use game_logic::{
+    assets_piston::Assets,
     consts::*,
-    entity::{Assets, Entity, Matrix, TempEntity, Weapon, WEAPON_SET},
+    entity::{Entity, Matrix, TempEntity, Weapon, WEAPON_SET},
     ShooterError, ShooterState,
 };
 use piston_window::math::translate;

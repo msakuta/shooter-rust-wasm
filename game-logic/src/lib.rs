@@ -56,10 +56,18 @@ macro_rules! js_err {
 pub mod consts;
 pub mod entity;
 pub mod xor128;
+#[cfg(feature = "webgl")]
+pub mod assets_webgl;
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+pub mod assets_piston;
 
 use crate::consts::*;
+#[cfg(feature = "webgl")]
+use crate::assets_webgl::Assets;
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+use crate::assets_piston::Assets;
 use crate::entity::{
-    Assets, BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Player, Projectile,
+    BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Player, Projectile,
     ShieldedBoss, TempEntity, Weapon,
 };
 use xor128::Xor128;

@@ -7,10 +7,11 @@ use wasm_bindgen::JsCast;
 use web_sys::{WebGlProgram, WebGlRenderingContext as GL, WebGlShader};
 
 use game_logic::{
+    assets_webgl::{Assets, ShaderBundle},
     console_log,
     consts::*,
     enable_buffer,
-    entity::{Assets, Entity, ShaderBundle, TempEntity, Weapon},
+    entity::{Entity, TempEntity, Weapon},
     js_str, vertex_buffer_data,
 };
 

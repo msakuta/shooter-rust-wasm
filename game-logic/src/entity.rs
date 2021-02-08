@@ -4,7 +4,7 @@ use crate::consts::*;
 use crate::xor128::Xor128;
 use crate::ShooterState;
 #[cfg(feature = "webgl")]
-use crate::{enable_buffer, load_texture, vertex_buffer_data};
+use crate::{enable_buffer, vertex_buffer_data};
 #[cfg(feature = "webgl")]
 use cgmath::{Matrix3, Matrix4, Rad, Vector2, Vector3};
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
@@ -19,12 +19,15 @@ use std::ops::{Add, Mul};
 use std::{ ops::{Deref, DerefMut}, rc::Rc };
 use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
 #[cfg(feature = "webgl")]
-use wasm_bindgen::JsValue;
-#[cfg(feature = "webgl")]
 use web_sys::{
-    Document, Element, WebGlBuffer, WebGlProgram, WebGlRenderingContext as GL, WebGlTexture,
-    WebGlUniformLocation,
+    WebGlRenderingContext as GL, WebGlTexture,
 };
+#[cfg(feature = "webgl")]
+use crate::assets_webgl::Assets;
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+use crate::assets_piston::Assets;
+
+
 
 /// The base structure of all Entities.  Implements common methods.
 pub struct Entity {
@@ -330,241 +333,7 @@ pub enum Enemy {
     SpiralEnemy(EnemyBase),
 }
 
-#[cfg(feature = "webgl")]
-pub struct ShaderBundle {
-    pub program: WebGlProgram,
-    pub vertex_position: u32,
-    pub tex_coord_position: u32,
-    pub texture_loc: Option<WebGlUniformLocation>,
-    pub transform_loc: Option<WebGlUniformLocation>,
-    pub tex_transform_loc: Option<WebGlUniformLocation>,
-    pub alpha_loc: Option<WebGlUniformLocation>,
-}
 
-#[cfg(feature = "webgl")]
-impl ShaderBundle {
-    pub fn new(gl: &GL, program: WebGlProgram) -> Self {
-        let get_uniform = |location: &str| {
-            let op: Option<WebGlUniformLocation> = gl.get_uniform_location(&program, location);
-            if op.is_none() {
-                console_log!("Warning: location {} undefined", location);
-            } else {
-                console_log!("location {} defined", location);
-            }
-            op
-        };
-        let vertex_position = gl.get_attrib_location(&program, "vertexData") as u32;
-        let tex_coord_position = gl.get_attrib_location(&program, "vertexData") as u32;
-        console_log!("vertex_position: {}", vertex_position);
-        console_log!("tex_coord_position: {}", tex_coord_position);
-        Self {
-            vertex_position,
-            tex_coord_position,
-            texture_loc: get_uniform("texture"),
-            transform_loc: get_uniform("transform"),
-            tex_transform_loc: get_uniform("texTransform"),
-            alpha_loc: get_uniform("alpha"),
-            // Program has to be later than others
-            program,
-        }
-    }
-}
-
-#[cfg(feature = "webgl")]
-pub struct Assets {
-    pub world_transform: Matrix4<f64>,
-
-    pub enemy_tex: Rc<WebGlTexture>,
-    pub boss_tex: Rc<WebGlTexture>,
-    pub shield_tex: Rc<WebGlTexture>,
-    pub spiral_enemy_tex: Rc<WebGlTexture>,
-    pub player_texture: Rc<WebGlTexture>,
-    pub bullet_texture: Rc<WebGlTexture>,
-    pub enemy_bullet_texture: Rc<WebGlTexture>,
-    pub phase_bullet_tex: Rc<WebGlTexture>,
-    pub spiral_bullet_tex: Rc<WebGlTexture>,
-    pub missile_tex: Rc<WebGlTexture>,
-    pub red_glow_tex: Rc<WebGlTexture>,
-    pub explode_tex: Rc<WebGlTexture>,
-    pub explode2_tex: Rc<WebGlTexture>,
-    pub trail_tex: Rc<WebGlTexture>,
-    pub beam_tex: Rc<WebGlTexture>,
-    pub back_tex: Rc<WebGlTexture>,
-    pub power_tex: Rc<WebGlTexture>,
-    pub power2_tex: Rc<WebGlTexture>,
-    pub sphere_tex: Rc<WebGlTexture>,
-    pub weapons_tex: Rc<WebGlTexture>,
-
-    pub sprite_shader: Option<ShaderBundle>,
-    pub trail_shader: Option<ShaderBundle>,
-    pub trail_buffer: Option<WebGlBuffer>,
-    pub rect_buffer: Option<WebGlBuffer>,
-
-    pub player_live_icons: Vec<Element>,
-}
-
-#[cfg(feature = "webgl")]
-impl Assets {
-    pub fn new(
-        document: &Document,
-        context: &GL,
-        image_assets: js_sys::Array,
-    ) -> Result<Self, JsValue> {
-        let side_panel = document.get_element_by_id("sidePanel").unwrap();
-
-        let player_live_icons = (0..3)
-            .map(|_| {
-                let lives_icon = document.create_element("img")?;
-                lives_icon.set_attribute(
-                    "src",
-                    &js_sys::Array::from(
-                        &image_assets
-                            .iter()
-                            .find(|value| {
-                                let array = js_sys::Array::from(value);
-                                array.iter().next() == Some(JsValue::from_str("player"))
-                            })
-                            .unwrap(),
-                    )
-                    .to_vec()
-                    .get(1)
-                    .ok_or_else(|| JsValue::from_str("Couldn't find texture"))?
-                    .as_string()
-                    .unwrap(),
-                )?;
-                side_panel.append_child(&lives_icon)?;
-                Ok(lives_icon)
-            })
-            .collect::<Result<Vec<Element>, JsValue>>()?;
-
-        let load_texture_local = |path| -> Result<Rc<WebGlTexture>, JsValue> {
-            if let Some(value) = image_assets.iter().find(|value| {
-                let array = js_sys::Array::from(value);
-                array.iter().next() == Some(JsValue::from_str(path))
-            }) {
-                let array = js_sys::Array::from(&value).to_vec();
-                load_texture(
-                    &context,
-                    &array
-                        .get(1)
-                        .ok_or_else(|| JsValue::from_str("Couldn't find texture"))?
-                        .as_string()
-                        .ok_or_else(|| {
-                            JsValue::from_str(&format!(
-                                "Couldn't convert value to String: {:?}",
-                                path
-                            ))
-                        })?,
-                )
-            } else {
-                Err(JsValue::from_str("Couldn't find texture"))
-            }
-        };
-
-        Ok(Assets {
-            world_transform: Matrix4::from_translation(Vector3::new(-1., 1., 0.))
-                * Matrix4::from_nonuniform_scale(2. / FWIDTH, -2. / FHEIGHT, 1.),
-            enemy_tex: load_texture_local("enemy")?,
-            boss_tex: load_texture_local("boss")?,
-            shield_tex: load_texture_local("shield")?,
-            spiral_enemy_tex: load_texture_local("spiralEnemy")?,
-            player_texture: load_texture_local("player")?,
-            bullet_texture: load_texture_local("bullet")?,
-            enemy_bullet_texture: load_texture_local("ebullet")?,
-            phase_bullet_tex: load_texture_local("phaseBullet")?,
-            spiral_bullet_tex: load_texture_local("spiralBullet")?,
-            missile_tex: load_texture_local("missile")?,
-            red_glow_tex: load_texture_local("redGlow")?,
-            explode_tex: load_texture_local("explode")?,
-            explode2_tex: load_texture_local("explode2")?,
-            trail_tex: load_texture_local("trail")?,
-            beam_tex: load_texture_local("beam")?,
-            back_tex: load_texture_local("back")?,
-            power_tex: load_texture_local("power")?,
-            power2_tex: load_texture_local("power2")?,
-            sphere_tex: load_texture_local("sphere")?,
-            weapons_tex: load_texture_local("weapons")?,
-            sprite_shader: None,
-            trail_shader: None,
-            rect_buffer: None,
-            trail_buffer: None,
-            player_live_icons,
-        })
-    }
-}
-
-#[cfg(all(not(feature = "webgl"), feature = "piston"))]
-pub struct Assets {
-    pub bg: Rc<G2dTexture>,
-    pub weapons_tex: Rc<G2dTexture>,
-    pub boss_tex: Rc<G2dTexture>,
-    pub enemy_tex: Rc<G2dTexture>,
-    pub spiral_enemy_tex: Rc<G2dTexture>,
-    pub player_tex: Rc<G2dTexture>,
-    pub shield_tex: Rc<G2dTexture>,
-    pub ebullet_tex: Rc<G2dTexture>,
-    pub phase_bullet_tex: Rc<G2dTexture>,
-    pub spiral_bullet_tex: Rc<G2dTexture>,
-    pub bullet_tex: Rc<G2dTexture>,
-    pub missile_tex: Rc<G2dTexture>,
-    pub explode_tex: Rc<G2dTexture>,
-    pub explode2_tex: Rc<G2dTexture>,
-    pub sphere_tex: Rc<G2dTexture>,
-    pub power_tex: Rc<G2dTexture>,
-    pub power2_tex: Rc<G2dTexture>,
-}
-
-#[cfg(all(not(feature = "webgl"), feature = "piston"))]
-impl Assets {
-    pub fn new(window: &mut PistonWindow) -> (Self, Glyphs) {
-        let mut exe_folder = std::env::current_exe().unwrap();
-        exe_folder.pop();
-        println!("exe: {:?}", exe_folder);
-        let assets_loader = find_folder::Search::KidsThenParents(1, 3)
-            .of(exe_folder)
-            .for_folder("assets")
-            .unwrap();
-
-        let font = &assets_loader.join("FiraSans-Regular.ttf");
-        let factory = window.factory.clone();
-        let glyphs = Glyphs::new(font, factory, TextureSettings::new()).unwrap();
-
-        let mut load_texture = |name| {
-            Rc::new(
-                Texture::from_path(
-                    &mut window.factory,
-                    &assets_loader.join(name),
-                    Flip::None,
-                    &TextureSettings::new(),
-                )
-                .unwrap(),
-            )
-        };
-
-        (
-            Self {
-                bg: load_texture("back2.jpg"),
-                weapons_tex: load_texture("weapons.png"),
-                boss_tex: load_texture("boss.png"),
-                enemy_tex: load_texture("enemy.png"),
-                spiral_enemy_tex: load_texture("spiral-enemy.png"),
-                player_tex: load_texture("player.png"),
-                shield_tex: load_texture("shield.png"),
-                ebullet_tex: load_texture("ebullet.png"),
-                phase_bullet_tex: load_texture("phase-bullet.png"),
-                spiral_bullet_tex: load_texture("spiral-bullet.png"),
-                bullet_tex: load_texture("bullet.png"),
-                missile_tex: load_texture("missile.png"),
-                explode_tex: load_texture("explode.png"),
-                explode2_tex: load_texture("explode2.png"),
-                sphere_tex: load_texture("sphere.png"),
-                power_tex: load_texture("power.png"),
-                power2_tex: load_texture("power2.png"),
-            },
-            glyphs,
-        )
-    }
-}
 
 impl Deref for Enemy {
     type Target = EnemyBase;

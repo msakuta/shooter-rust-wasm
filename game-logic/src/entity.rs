@@ -323,80 +323,72 @@ impl EnemyBase {
     }
 }
 
-pub struct ShieldedBoss {
-    pub base: EnemyBase,
-    pub shield_health: i32,
+pub enum EnemyType {
+    Enemy1,
+    Boss,
+    ShieldedBoss,
+    SpiralEnemy,
 }
 
-impl ShieldedBoss {
-    pub fn new(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Self {
-        Self {
-            base: EnemyBase {
-                base: Entity::new(id_gen, pos, velo).health(64),
-                predicted_damage: 0,
-            },
-            shield_health: 64,
-        }
-    }
-}
-
-pub enum Enemy {
-    Enemy1(EnemyBase),
-    Boss(EnemyBase),
-    ShieldedBoss(ShieldedBoss),
-    SpiralEnemy(EnemyBase),
+pub struct Enemy {
+    pub ty: EnemyType,
+    base: Entity,
+    predicted_damage: i32,
+    shield_health: Option<i32>,
 }
 
 impl Deref for Enemy {
-    type Target = EnemyBase;
-    fn deref(&self) -> &EnemyBase {
-        match self {
-            Enemy::Enemy1(base) | Enemy::Boss(base) | Enemy::SpiralEnemy(base) => &base,
-            Enemy::ShieldedBoss(boss) => &boss.base,
-        }
+    type Target = Entity;
+    fn deref(&self) -> &Entity {
+        &self.base
     }
 }
 
 impl DerefMut for Enemy {
-    fn deref_mut(&mut self) -> &mut EnemyBase {
-        match self {
-            Enemy::Enemy1(ref mut base)
-            | Enemy::Boss(ref mut base)
-            | Enemy::SpiralEnemy(ref mut base) => base,
-            Enemy::ShieldedBoss(ref mut boss) => &mut boss.base,
-        }
+    fn deref_mut(&mut self) -> &mut Entity {
+        &mut self.base
     }
 }
 
 impl Enemy {
+    pub fn new(
+        ty: EnemyType,
+        id_gen: &mut u32,
+        pos: [f64; 2],
+        velo: [f64; 2],
+        health: i32,
+    ) -> Self {
+        Self {
+            ty,
+            base: Entity::new(id_gen, pos, velo).health(health),
+            predicted_damage: 0,
+            shield_health: None,
+        }
+    }
+
+    pub fn new_shielded_boss(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Self {
+        Self {
+            ty: EnemyType::ShieldedBoss,
+            base: Entity::new(id_gen, pos, velo).health(64),
+            predicted_damage: 0,
+            shield_health: Some(64),
+        }
+    }
+
     pub fn get_id(&self) -> u32 {
         self.id
     }
 
     pub fn damage(&mut self, val: i32) {
-        match self {
-            Enemy::Enemy1(ref mut base)
-            | Enemy::Boss(ref mut base)
-            | Enemy::SpiralEnemy(ref mut base) => {
-                base.base.health -= val;
-                console_log!("damaged: {}", base.health);
+        if let Some(ref mut shield_health) = self.shield_health {
+            if *shield_health < 16 {
+                self.base.health -= val
+            } else {
+                *shield_health -= val
             }
-            Enemy::ShieldedBoss(ref mut boss) => {
-                if boss.shield_health < 16 {
-                    boss.base.health -= val
-                } else {
-                    boss.shield_health -= val
-                }
-            }
-        }
-    }
-
-    pub fn predicted_damage(&self) -> i32 {
-        match self {
-            Enemy::Enemy1(base) | Enemy::Boss(base) | Enemy::SpiralEnemy(base) => {
-                base.predicted_damage
-            }
-            Enemy::ShieldedBoss(boss) => boss.base.predicted_damage,
+        } else {
+            self.base.health -= val;
+            console_log!("damaged: {}", self.base.health);
         }
     }
 
@@ -409,8 +401,8 @@ impl Enemy {
     }
 
     pub fn drop_item(&self, ent: Entity) -> Item {
-        match self {
-            Enemy::Enemy1(_) => Item::PowerUp(ent),
+        match self.ty {
+            EnemyType::Enemy1 => Item::PowerUp(ent),
             _ => Item::PowerUp10(ent),
         }
     }
@@ -446,7 +438,7 @@ impl Enemy {
                 &mut state.rng,
                 Projectile::new_phase,
             );
-        } else if let Enemy::SpiralEnemy(_) = self {
+        } else if let EnemyType::SpiralEnemy = self.ty {
             self.gen_bullets(
                 &mut state.id_gen,
                 &mut state.bullets,
@@ -465,19 +457,20 @@ impl Enemy {
             }
         }
 
-        match self {
-            Enemy::Enemy1(ref mut base) | Enemy::Boss(ref mut base) => base.animate(),
-            Enemy::ShieldedBoss(ref mut boss) => {
-                if boss.shield_health < 64 && state.time % 8 == 0 {
-                    boss.shield_health += 1;
+        match self.ty {
+            EnemyType::ShieldedBoss => {
+                if let Some(ref mut shield_health) = self.shield_health {
+                    if *shield_health < 64 && state.time % 8 == 0 {
+                        *shield_health += 1;
+                    }
                 }
-                boss.base.animate()
             }
-            Enemy::SpiralEnemy(ref mut base) => {
-                base.rotation -= std::f32::consts::PI * 0.01;
-                base.animate()
+            EnemyType::SpiralEnemy => {
+                self.base.rotation -= std::f32::consts::PI * 0.01;
             }
+            _ => (),
         }
+        self.base.animate()
     }
 
     #[cfg(feature = "webgl")]
@@ -485,23 +478,25 @@ impl Enemy {
         self.draw_tex(
             assets,
             gl,
-            match self {
-                Enemy::Enemy1(_) => &assets.enemy_tex,
-                Enemy::Boss(_) | Enemy::ShieldedBoss(_) => &assets.boss_tex,
-                Enemy::SpiralEnemy(_) => &assets.spiral_enemy_tex,
+            match self.ty {
+                EnemyType::Enemy1 => &assets.enemy_tex,
+                EnemyType::Boss | EnemyType::ShieldedBoss => &assets.boss_tex,
+                EnemyType::SpiralEnemy => &assets.spiral_enemy_tex,
             },
-            Some(match self {
-                Enemy::Enemy1(_) => [ENEMY_SIZE; 2],
-                Enemy::Boss(_) | Enemy::ShieldedBoss(_) | Enemy::SpiralEnemy(_) => [BOSS_SIZE; 2],
+            Some(match self.ty {
+                EnemyType::Enemy1 => [ENEMY_SIZE; 2],
+                EnemyType::Boss | EnemyType::ShieldedBoss | EnemyType::SpiralEnemy => {
+                    [BOSS_SIZE; 2]
+                }
             }),
         );
 
-        if let Enemy::ShieldedBoss(boss) = self {
+        if let Some(shield_health) = self.shield_health {
             self.draw_tex(
                 assets,
                 gl,
                 &assets.shield_tex,
-                Some([boss.shield_health as f64; 2]),
+                Some([shield_health as f64; 2]),
             );
         }
     }
@@ -511,29 +506,26 @@ impl Enemy {
         self.draw_tex(
             context,
             g,
-            match self {
-                Enemy::Enemy1(_) => &assets.enemy_tex,
-                Enemy::Boss(_) | Enemy::ShieldedBoss(_) => &assets.boss_tex,
-                Enemy::SpiralEnemy(_) => &assets.spiral_enemy_tex,
+            match self.ty {
+                EnemyType::Enemy1 => &assets.enemy_tex,
+                EnemyType::Boss | EnemyType::ShieldedBoss => &assets.boss_tex,
+                EnemyType::SpiralEnemy => &assets.spiral_enemy_tex,
             },
-            if let Enemy::SpiralEnemy(_) = self {
+            if let EnemyType::SpiralEnemy = self.ty {
                 Some(0.5)
             } else {
                 None
             },
         );
-        if let Enemy::ShieldedBoss(ref boss) = self {
-            let pos = &boss.base.pos;
+        if let Some(shield_health) = self.shield_health {
+            let pos = &self.base.pos;
             let tex2 = &*assets.shield_tex;
             let centerize = translate([
                 -(tex2.get_width() as f64 / 2.),
                 -(tex2.get_height() as f64 / 2.),
             ]);
             let rotmat = rotate_radians(0 as f64);
-            let scalemat = scale(
-                boss.shield_health as f64 / 64.,
-                boss.shield_health as f64 / 64.,
-            );
+            let scalemat = scale(shield_health as f64 / 64., shield_health as f64 / 64.);
             let translate = translate(*pos);
             let draw_state = context.draw_state;
             let image =
@@ -558,8 +550,8 @@ impl Enemy {
     }
 
     pub fn get_bb(&self) -> [f64; 4] {
-        let size = if let Enemy::ShieldedBoss(boss) = self {
-            boss.shield_health as f64
+        let size = if let EnemyType::ShieldedBoss = self.ty {
+            self.shield_health.unwrap_or(0) as f64
         } else {
             ENEMY_SIZE
         };
@@ -572,11 +564,16 @@ impl Enemy {
     }
 
     pub fn is_boss(&self) -> bool {
-        matches!(self, Enemy::Boss(_) | Enemy::ShieldedBoss(_))
+        matches!(self.ty, EnemyType::Boss | EnemyType::ShieldedBoss)
     }
 
     pub fn new_spiral(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Enemy {
-        Enemy::SpiralEnemy(EnemyBase::new(id_gen, pos, velo))
+        Enemy {
+            ty: EnemyType::SpiralEnemy,
+            base: Entity::new(id_gen, pos, velo).health(64),
+            predicted_damage: 0,
+            shield_health: None,
+        }
     }
 }
 
@@ -719,7 +716,7 @@ impl Projectile {
                         let dist = vec2_len(vec2_sub(base.0.pos, enemy.pos));
                         if dist < MISSILE_DETECTION_RANGE
                             && dist < bestpair.1
-                            && enemy.predicted_damage() < enemy.total_health()
+                            && enemy.predicted_damage < enemy.total_health()
                         {
                             (enemy.id, dist, Some(enemy))
                         } else {
@@ -731,8 +728,8 @@ impl Projectile {
                         enemy.add_predicted_damage(MISSILE_DAMAGE);
                         println!(
                             "Add predicted damage: {} -> {}",
-                            enemy.predicted_damage() - MISSILE_DAMAGE,
-                            enemy.predicted_damage()
+                            enemy.predicted_damage - MISSILE_DAMAGE,
+                            enemy.predicted_damage
                         );
                     }
                 } else if let Some(target_enemy) = enemies.iter().find(|e| e.get_id() == *target) {
@@ -770,8 +767,8 @@ impl Projectile {
                         target_enemy.add_predicted_damage(-MISSILE_DAMAGE);
                         println!(
                             "Reduce predicted damage: {} -> {}",
-                            target_enemy.predicted_damage() + MISSILE_DAMAGE,
-                            target_enemy.predicted_damage()
+                            target_enemy.predicted_damage + MISSILE_DAMAGE,
+                            target_enemy.predicted_damage
                         );
                     }
                 }

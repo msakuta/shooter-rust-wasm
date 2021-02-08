@@ -67,8 +67,7 @@ use crate::assets_piston::Assets;
 use crate::assets_webgl::Assets;
 use crate::consts::*;
 use crate::entity::{
-    BulletBase, DeathReason, Enemy, EnemyBase, Entity, Item, Player, Projectile, ShieldedBoss,
-    TempEntity, Weapon,
+    BulletBase, DeathReason, Enemy, EnemyType, Entity, Item, Player, Projectile, TempEntity, Weapon,
 };
 use xor128::Xor128;
 
@@ -309,20 +308,20 @@ impl ShooterState {
             let wave = self.time % wave_period;
             if wave < wave_period * 3 / 4 {
                 let [enemy_count, boss_count, shielded_boss_count, spiral_count] =
-                    self.enemies.iter().fold([0; 4], |mut c, e| match e {
-                        Enemy::Enemy1(_) => {
+                    self.enemies.iter().fold([0; 4], |mut c, e| match e.ty {
+                        EnemyType::Enemy1 => {
                             c[0] += 1;
                             c
                         }
-                        Enemy::Boss(_) => {
+                        EnemyType::Boss => {
                             c[1] += 1;
                             c
                         }
-                        Enemy::ShieldedBoss(_) => {
+                        EnemyType::ShieldedBoss => {
                             c[2] += 1;
                             c
                         }
-                        Enemy::SpiralEnemy(_) => {
+                        EnemyType::SpiralEnemy => {
                             c[3] += 1;
                             c
                         }
@@ -388,17 +387,9 @@ impl ShooterState {
                         };
                         if let Some(x) = accum.iter().position(|x| dice < *x) {
                             self.enemies.push(match x {
-                                0 => Enemy::Enemy1(
-                                    EnemyBase::new(&mut self.id_gen, pos, velo).health(3),
-                                ),
-                                1 => Enemy::Boss(
-                                    EnemyBase::new(&mut self.id_gen, pos, velo).health(64),
-                                ),
-                                2 => Enemy::ShieldedBoss(ShieldedBoss::new(
-                                    &mut self.id_gen,
-                                    pos,
-                                    velo,
-                                )),
+                                0 => Enemy::new(EnemyType::Enemy1, &mut self.id_gen, pos, velo, 3),
+                                1 => Enemy::new(EnemyType::Boss, &mut self.id_gen, pos, velo, 64),
+                                2 => Enemy::new_shielded_boss(&mut self.id_gen, pos, velo),
                                 _ => Enemy::new_spiral(&mut self.id_gen, pos, velo),
                             });
                         }
@@ -489,11 +480,11 @@ impl ShooterState {
             let dead = self.enemies.remove(*i);
             println!(
                 "Deleted Enemy {} id={}: {} / {}",
-                match dead {
-                    Enemy::Enemy1(_) => "enemy",
-                    Enemy::Boss(_) => "boss",
-                    Enemy::ShieldedBoss(_) => "ShieldedBoss",
-                    Enemy::SpiralEnemy(_) => "SpiralEnemy",
+                match dead.ty {
+                    EnemyType::Enemy1 => "enemy",
+                    EnemyType::Boss => "boss",
+                    EnemyType::ShieldedBoss => "ShieldedBoss",
+                    EnemyType::SpiralEnemy => "SpiralEnemy",
                 },
                 dead.get_id(),
                 *i,

@@ -259,7 +259,7 @@ impl ShooterState {
             let mut enemies = std::mem::take(&mut self.enemies);
             for enemy in &mut enemies {
                 if enemy.test_hit(beam_rect) {
-                    add_tent(true, &enemy.get_base().pos, self);
+                    add_tent(true, &enemy.pos, self);
                     enemy.damage(1 + level);
                 }
             }
@@ -473,7 +473,7 @@ impl ShooterState {
                     self.player.kills += 1;
                     self.player.score += if enemy.is_boss() { 10 } else { 1 };
                     if self.rng.gen_range(0, 100) < 20 {
-                        let ent = Entity::new(&mut self.id_gen, enemy.get_base().pos, [0., 1.]);
+                        let ent = Entity::new(&mut self.id_gen, enemy.pos, [0., 1.]);
                         self.items.push(enemy.drop_item(ent));
                     }
                     continue;

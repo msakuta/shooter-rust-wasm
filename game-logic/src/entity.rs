@@ -1143,13 +1143,16 @@ pub enum Item {
     PowerUp10(Entity),
 }
 
-impl Item {
-    pub fn get_base(&self) -> &Entity {
+impl std::ops::Deref for Item {
+    type Target = Entity;
+    fn deref(&self) -> &Entity {
         match self {
             Item::PowerUp(ent) | Item::PowerUp10(ent) => ent,
         }
     }
+}
 
+impl Item {
     #[cfg(feature = "webgl")]
     pub fn draw(&self, gl: &GL, assets: &Assets) {
         match self {

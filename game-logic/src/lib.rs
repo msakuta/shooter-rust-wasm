@@ -432,7 +432,7 @@ impl ShooterState {
             let dead = self.items.remove(*i);
             println!(
                 "Deleted Item id={}: {} / {}",
-                dead.get_base().id,
+                dead.id,
                 *i,
                 self.items.len()
             );

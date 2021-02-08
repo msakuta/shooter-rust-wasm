@@ -332,22 +332,9 @@ pub enum EnemyType {
 
 pub struct Enemy {
     pub ty: EnemyType,
-    base: Entity,
-    predicted_damage: i32,
-    shield_health: Option<i32>,
-}
-
-impl Deref for Enemy {
-    type Target = Entity;
-    fn deref(&self) -> &Entity {
-        &self.base
-    }
-}
-
-impl DerefMut for Enemy {
-    fn deref_mut(&mut self) -> &mut Entity {
-        &mut self.base
-    }
+    pub base: Entity,
+    pub predicted_damage: i32,
+    pub shield_health: Option<i32>,
 }
 
 impl Enemy {
@@ -376,7 +363,7 @@ impl Enemy {
     }
 
     pub fn get_id(&self) -> u32 {
-        self.id
+        self.base.id
     }
 
     pub fn damage(&mut self, val: i32) {
@@ -397,7 +384,7 @@ impl Enemy {
     }
 
     pub fn total_health(&self) -> i32 {
-        self.health
+        self.base.health
     }
 
     pub fn drop_item(&self, ent: Entity) -> Item {
@@ -422,8 +409,12 @@ impl Enemy {
             for i in 0..bullet_count {
                 let angle = 2. * PI * i as f64 / bullet_count as f64 + phase_offset;
                 let eb = create_fn(BulletBase(
-                    Entity::new(id_gen, self.pos, vec2_scale([angle.cos(), angle.sin()], 1.))
-                        .rotation(angle as f32),
+                    Entity::new(
+                        id_gen,
+                        self.base.pos,
+                        vec2_scale([angle.cos(), angle.sin()], 1.),
+                    )
+                    .rotation(angle as f32),
                 ));
                 bullets.insert(eb.get_id(), eb);
             }
@@ -450,7 +441,7 @@ impl Enemy {
             if x == 0 {
                 let eb = Projectile::EnemyBullet(BulletBase(Entity::new(
                     &mut state.id_gen,
-                    self.pos,
+                    self.base.pos,
                     [state.rng.gen() - 0.5, state.rng.gen() - 0.5],
                 )));
                 state.bullets.insert(eb.get_id(), eb);
@@ -475,7 +466,7 @@ impl Enemy {
 
     #[cfg(feature = "webgl")]
     pub fn draw(&self, _state: &ShooterState, gl: &GL, assets: &Assets) {
-        self.draw_tex(
+        self.base.draw_tex(
             assets,
             gl,
             match self.ty {
@@ -492,7 +483,7 @@ impl Enemy {
         );
 
         if let Some(shield_health) = self.shield_health {
-            self.draw_tex(
+            self.base.draw_tex(
                 assets,
                 gl,
                 &assets.shield_tex,
@@ -503,7 +494,7 @@ impl Enemy {
 
     #[cfg(all(not(feature = "webgl"), feature = "piston"))]
     pub fn draw(&self, context: &Context, g: &mut G2d, assets: &Assets) {
-        self.draw_tex(
+        self.base.draw_tex(
             context,
             g,
             match self.ty {
@@ -556,10 +547,10 @@ impl Enemy {
             ENEMY_SIZE
         };
         [
-            self.pos[0] - size,
-            self.pos[1] - size,
-            self.pos[0] + size,
-            self.pos[1] + size,
+            self.base.pos[0] - size,
+            self.base.pos[1] - size,
+            self.base.pos[0] + size,
+            self.base.pos[1] + size,
         ]
     }
 
@@ -713,12 +704,12 @@ impl Projectile {
             } => {
                 if *target == 0 {
                     let best = enemies.iter_mut().fold((0, 1e5, None), |bestpair, enemy| {
-                        let dist = vec2_len(vec2_sub(base.0.pos, enemy.pos));
+                        let dist = vec2_len(vec2_sub(base.0.pos, enemy.base.pos));
                         if dist < MISSILE_DETECTION_RANGE
                             && dist < bestpair.1
                             && enemy.predicted_damage < enemy.total_health()
                         {
-                            (enemy.id, dist, Some(enemy))
+                            (enemy.base.id, dist, Some(enemy))
                         } else {
                             bestpair
                         }
@@ -733,7 +724,7 @@ impl Projectile {
                         );
                     }
                 } else if let Some(target_enemy) = enemies.iter().find(|e| e.get_id() == *target) {
-                    let norm = vec2_normalized(vec2_sub(target_enemy.pos, base.0.pos));
+                    let norm = vec2_normalized(vec2_sub(target_enemy.base.pos, base.0.pos));
                     let desired_velo = vec2_scale(norm, MISSILE_SPEED);
                     let desired_diff = vec2_sub(desired_velo, base.0.velo);
                     if std::f64::EPSILON < vec2_square_len(desired_diff) {

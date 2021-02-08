@@ -399,7 +399,7 @@ impl Enemy {
         id_gen: &mut u32,
         bullets: &mut std::collections::HashMap<u32, Projectile>,
         rng: &mut Xor128,
-        create_fn: impl Fn(BulletBase) -> Projectile,
+        create_fn: impl Fn(Entity) -> Projectile,
     ) {
         let x = rng.gen_range(0, 256);
         if x == 0 {
@@ -408,14 +408,14 @@ impl Enemy {
             let phase_offset = rng.gen() * PI;
             for i in 0..bullet_count {
                 let angle = 2. * PI * i as f64 / bullet_count as f64 + phase_offset;
-                let eb = create_fn(BulletBase(
+                let eb = create_fn(
                     Entity::new(
                         id_gen,
                         self.base.pos,
                         vec2_scale([angle.cos(), angle.sin()], 1.),
                     )
                     .rotation(angle as f32),
-                ));
+                );
                 bullets.insert(eb.get_id(), eb);
             }
         }
@@ -439,11 +439,14 @@ impl Enemy {
         } else {
             let x: u32 = state.rng.gen_range(0, 64);
             if x == 0 {
-                let eb = Projectile::EnemyBullet(BulletBase(Entity::new(
-                    &mut state.id_gen,
-                    self.base.pos,
-                    [state.rng.gen() - 0.5, state.rng.gen() - 0.5],
-                )));
+                let eb = Projectile::new(
+                    ProjectileType::EnemyBullet,
+                    Entity::new(
+                        &mut state.id_gen,
+                        self.base.pos,
+                        [state.rng.gen() - 0.5, state.rng.gen() - 0.5],
+                    ),
+                );
                 state.bullets.insert(eb.get_id(), eb);
             }
         }
@@ -568,38 +571,41 @@ impl Enemy {
     }
 }
 
-pub struct BulletBase(pub Entity);
+pub enum ProjectileType {
+    Bullet,
+    EnemyBullet,
+    PhaseBullet,
+    SpiralBullet,
+    Missile,
+}
 
-pub enum Projectile {
-    Bullet(BulletBase),
-    EnemyBullet(BulletBase),
-    PhaseBullet {
-        base: BulletBase,
-        velo: [f64; 2],
-        phase: f64,
-    },
-    SpiralBullet {
-        base: BulletBase,
-        speed: f64,
-        traveled: f64,
-    },
-    Missile {
-        base: BulletBase,
-        target: u32,
-        trail: Vec<[f64; 2]>,
-    },
+pub struct PhaseBulletComponent {
+    velo: [f64; 2],
+    phase: f64,
+}
+
+pub struct SpiralBulletComponent {
+    speed: f64,
+    traveled: f64,
+}
+
+pub struct MissileComponent {
+    target: u32,
+    trail: Vec<[f64; 2]>,
+}
+
+pub struct Projectile {
+    pub ty: ProjectileType,
+    pub base: Entity,
+    pub phase_bullet_component: Option<PhaseBulletComponent>,
+    pub spiral_bullet_component: Option<SpiralBulletComponent>,
+    pub missile_component: Option<MissileComponent>,
 }
 
 impl Deref for Projectile {
     type Target = Entity;
     fn deref(&self) -> &Entity {
-        match &self {
-            &Projectile::Bullet(base) | &Projectile::EnemyBullet(base) => &base.0,
-            &Projectile::PhaseBullet { base, .. } | &Projectile::SpiralBullet { base, .. } => {
-                &base.0
-            }
-            &Projectile::Missile { base, .. } => &base.0,
-        }
+        &self.base
     }
 }
 
@@ -611,21 +617,51 @@ const MISSILE_TRAIL_LENGTH: usize = 20;
 const MISSILE_DAMAGE: i32 = 5;
 
 impl Projectile {
-    pub fn new_phase(base: BulletBase) -> Projectile {
-        let velo = base.0.velo;
-        Projectile::PhaseBullet {
+    pub fn new(ty: ProjectileType, base: Entity) -> Self {
+        Self {
+            ty,
             base,
-            velo,
-            phase: 0.,
+            phase_bullet_component: None,
+            spiral_bullet_component: None,
+            missile_component: None,
         }
     }
 
-    pub fn new_spiral(base: BulletBase) -> Projectile {
-        let speed = vec2_len(base.0.velo);
-        Projectile::SpiralBullet {
+    pub fn new_phase(base: Entity) -> Projectile {
+        let velo = base.velo;
+        Projectile {
+            ty: ProjectileType::PhaseBullet,
             base,
-            speed,
-            traveled: 0.,
+            phase_bullet_component: Some(PhaseBulletComponent { velo, phase: 0. }),
+            spiral_bullet_component: None,
+            missile_component: None,
+        }
+    }
+
+    pub fn new_spiral(base: Entity) -> Projectile {
+        let speed = vec2_len(base.velo);
+        Projectile {
+            ty: ProjectileType::SpiralBullet,
+            base,
+            phase_bullet_component: None,
+            spiral_bullet_component: Some(SpiralBulletComponent {
+                speed,
+                traveled: 0.,
+            }),
+            missile_component: None,
+        }
+    }
+
+    pub fn new_missile(base: Entity) -> Self {
+        Self {
+            ty: ProjectileType::Missile,
+            base,
+            phase_bullet_component: None,
+            spiral_bullet_component: None,
+            missile_component: Some(MissileComponent {
+                target: 0,
+                trail: vec![],
+            }),
         }
     }
 
@@ -634,42 +670,40 @@ impl Projectile {
     }
 
     pub fn get_type(&self) -> &str {
-        match &self {
-            &Projectile::Bullet(_) | &Projectile::EnemyBullet(_) => "Bullet",
-            &Projectile::PhaseBullet { .. } => "PhaseBullet",
-            &Projectile::SpiralBullet { .. } => "SpiralBullet",
-            &Projectile::Missile { .. } => "Missile",
+        match self.ty {
+            ProjectileType::Bullet | ProjectileType::EnemyBullet => "Bullet",
+            ProjectileType::PhaseBullet => "PhaseBullet",
+            ProjectileType::SpiralBullet => "SpiralBullet",
+            ProjectileType::Missile => "Missile",
         }
     }
 
     fn animate_player_bullet(
-        mut base: &mut BulletBase,
+        mut base: &mut Entity,
         enemies: &mut Vec<Enemy>,
         mut _player: &mut Player,
     ) -> Option<DeathReason> {
         let bbox = Self::get_bb_base(base);
-        let &mut BulletBase(ent) = &mut base;
         for enemy in enemies.iter_mut() {
             if enemy.test_hit(bbox) {
-                enemy.damage(ent.health);
-                ent.health = 0;
+                enemy.damage(base.health);
+                base.health = 0;
                 break;
             }
         }
-        ent.animate()
+        base.animate()
     }
 
     fn animate_enemy_bullet(
-        base: &mut BulletBase,
+        base: &mut Entity,
         _enemies: &mut Vec<Enemy>,
         player: &mut Player,
     ) -> Option<DeathReason> {
-        let BulletBase(ref mut ent) = base;
-        if let Some(death_reason) = ent.hits_player(&player.base) {
-            player.base.health -= ent.health;
+        if let Some(death_reason) = base.hits_player(&player.base) {
+            player.base.health -= base.health;
             return Some(death_reason);
         }
-        ent.animate()
+        base.animate()
     }
 
     pub fn animate_bullet(
@@ -677,116 +711,119 @@ impl Projectile {
         enemies: &mut Vec<Enemy>,
         player: &mut Player,
     ) -> Option<DeathReason> {
-        match self {
-            Projectile::Bullet(base) => Self::animate_player_bullet(base, enemies, player),
-            Projectile::EnemyBullet(base) => Self::animate_enemy_bullet(base, enemies, player),
-            Projectile::PhaseBullet { base, velo, phase } => {
-                base.0.velo = vec2_scale(*velo, (phase.sin() + 1.) / 2.);
-                *phase += 0.02 * std::f64::consts::PI;
-                Self::animate_enemy_bullet(base, enemies, player)
-            }
-            Projectile::SpiralBullet {
-                base,
-                speed,
-                traveled,
-            } => {
-                let rotation =
-                    base.0.rotation as f64 - 0.02 * std::f64::consts::PI / (*traveled * 0.05 + 1.);
-                base.0.rotation = rotation as f32;
-                base.0.velo = vec2_scale([rotation.cos(), rotation.sin()], *speed);
-                *traveled += *speed;
-                Self::animate_enemy_bullet(base, enemies, player)
-            }
-            Projectile::Missile {
-                base,
-                target,
-                trail,
-            } => {
-                if *target == 0 {
-                    let best = enemies.iter_mut().fold((0, 1e5, None), |bestpair, enemy| {
-                        let dist = vec2_len(vec2_sub(base.0.pos, enemy.base.pos));
-                        if dist < MISSILE_DETECTION_RANGE
-                            && dist < bestpair.1
-                            && enemy.predicted_damage < enemy.total_health()
-                        {
-                            (enemy.base.id, dist, Some(enemy))
-                        } else {
-                            bestpair
-                        }
-                    });
-                    *target = best.0;
-                    if let Some(enemy) = best.2 {
-                        enemy.add_predicted_damage(MISSILE_DAMAGE);
-                        println!(
-                            "Add predicted damage: {} -> {}",
-                            enemy.predicted_damage - MISSILE_DAMAGE,
-                            enemy.predicted_damage
-                        );
+        if let Some(ref mut phase_bullet) = self.phase_bullet_component {
+            self.base.velo = vec2_scale(phase_bullet.velo, (phase_bullet.phase.sin() + 1.) / 2.);
+            phase_bullet.phase += 0.02 * std::f64::consts::PI;
+        }
+
+        if let Some(SpiralBulletComponent {
+            speed,
+            ref mut traveled,
+        }) = self.spiral_bullet_component
+        {
+            let rotation =
+                self.base.rotation as f64 - 0.02 * std::f64::consts::PI / (*traveled * 0.05 + 1.);
+            self.base.rotation = rotation as f32;
+            self.base.velo = vec2_scale([rotation.cos(), rotation.sin()], speed);
+            *traveled += speed;
+        }
+
+        let pos = &self.base.pos;
+        if let Some(MissileComponent {
+            ref mut target,
+            ref mut trail,
+        }) = self.missile_component
+        {
+            if *target == 0 {
+                let best = enemies.iter_mut().fold((0, 1e5, None), |bestpair, enemy| {
+                    let dist = vec2_len(vec2_sub(*pos, enemy.base.pos));
+                    if dist < MISSILE_DETECTION_RANGE
+                        && dist < bestpair.1
+                        && enemy.predicted_damage < enemy.total_health()
+                    {
+                        (enemy.base.id, dist, Some(enemy))
+                    } else {
+                        bestpair
                     }
-                } else if let Some(target_enemy) = enemies.iter().find(|e| e.get_id() == *target) {
-                    let norm = vec2_normalized(vec2_sub(target_enemy.base.pos, base.0.pos));
-                    let desired_velo = vec2_scale(norm, MISSILE_SPEED);
-                    let desired_diff = vec2_sub(desired_velo, base.0.velo);
-                    if std::f64::EPSILON < vec2_square_len(desired_diff) {
-                        base.0.velo = if vec2_square_len(desired_diff)
-                            < MISSILE_HOMING_SPEED * MISSILE_HOMING_SPEED
-                        {
-                            desired_velo
-                        } else {
-                            let desired_diff_norm = vec2_normalized(desired_diff);
-                            vec2_add(
-                                base.0.velo,
-                                vec2_scale(desired_diff_norm, MISSILE_HOMING_SPEED),
-                            )
-                        };
-                        let angle = base.0.velo[1].atan2(base.0.velo[0]);
-                        base.0.rotation = (angle + std::f64::consts::FRAC_PI_2) as f32;
-                        let (s, c) = angle.sin_cos();
-                        base.0.velo[0] = MISSILE_SPEED * c;
-                        base.0.velo[1] = MISSILE_SPEED * s;
-                    }
-                } else {
-                    *target = 0
+                });
+                *target = best.0;
+                if let Some(enemy) = best.2 {
+                    enemy.add_predicted_damage(MISSILE_DAMAGE);
+                    println!(
+                        "Add predicted damage: {} -> {}",
+                        enemy.predicted_damage - MISSILE_DAMAGE,
+                        enemy.predicted_damage
+                    );
                 }
-                if MISSILE_TRAIL_LENGTH < trail.len() {
-                    trail.remove(0);
+            } else if let Some(target_enemy) = enemies.iter().find(|e| e.get_id() == *target) {
+                let norm = vec2_normalized(vec2_sub(target_enemy.base.pos, self.base.pos));
+                let desired_velo = vec2_scale(norm, MISSILE_SPEED);
+                let desired_diff = vec2_sub(desired_velo, self.base.velo);
+                if std::f64::EPSILON < vec2_square_len(desired_diff) {
+                    self.base.velo = if vec2_square_len(desired_diff)
+                        < MISSILE_HOMING_SPEED * MISSILE_HOMING_SPEED
+                    {
+                        desired_velo
+                    } else {
+                        let desired_diff_norm = vec2_normalized(desired_diff);
+                        vec2_add(
+                            self.base.velo,
+                            vec2_scale(desired_diff_norm, MISSILE_HOMING_SPEED),
+                        )
+                    };
+                    let angle = self.base.velo[1].atan2(self.base.velo[0]);
+                    self.base.rotation = (angle + std::f64::consts::FRAC_PI_2) as f32;
+                    let (s, c) = angle.sin_cos();
+                    self.base.velo[0] = MISSILE_SPEED * c;
+                    self.base.velo[1] = MISSILE_SPEED * s;
                 }
-                trail.push(base.0.pos);
-                let res = Self::animate_player_bullet(base, enemies, player);
-                if res.is_some() {
-                    if let Some(target_enemy) = enemies.iter_mut().find(|e| e.get_id() == *target) {
-                        target_enemy.add_predicted_damage(-MISSILE_DAMAGE);
-                        println!(
-                            "Reduce predicted damage: {} -> {}",
-                            target_enemy.predicted_damage + MISSILE_DAMAGE,
-                            target_enemy.predicted_damage
-                        );
-                    }
-                }
-                res
+            } else {
+                *target = 0
             }
+            if MISSILE_TRAIL_LENGTH < trail.len() {
+                trail.remove(0);
+            }
+            trail.push(self.base.pos);
+            let res = Self::animate_player_bullet(&mut self.base, enemies, player);
+            if res.is_some() {
+                if let Some(target_enemy) = enemies.iter_mut().find(|e| e.get_id() == *target) {
+                    target_enemy.add_predicted_damage(-MISSILE_DAMAGE);
+                    println!(
+                        "Reduce predicted damage: {} -> {}",
+                        target_enemy.predicted_damage + MISSILE_DAMAGE,
+                        target_enemy.predicted_damage
+                    );
+                }
+            }
+            return res;
+        }
+
+        match self.ty {
+            ProjectileType::Bullet | ProjectileType::Missile => {
+                Self::animate_player_bullet(&mut self.base, enemies, player)
+            }
+            _ => Self::animate_enemy_bullet(&mut self.base, enemies, player),
         }
     }
 
-    pub fn get_bb_base(base: &BulletBase) -> [f64; 4] {
-        let e = &base.0;
+    pub fn get_bb_base(base: &Entity) -> [f64; 4] {
         [
-            e.pos[0] - BULLET_SIZE,
-            e.pos[1] - BULLET_SIZE,
-            e.pos[0] + BULLET_SIZE,
-            e.pos[1] + BULLET_SIZE,
+            base.pos[0] - BULLET_SIZE,
+            base.pos[1] - BULLET_SIZE,
+            base.pos[0] + BULLET_SIZE,
+            base.pos[1] + BULLET_SIZE,
         ]
     }
 
     #[cfg(feature = "webgl")]
     pub fn draw(&self, gl: &GL, assets: &Assets) {
-        if let Projectile::Bullet(base) = self {
+        if let ProjectileType::Bullet = self.ty {
             if let Some(ref shader) = assets.sprite_shader.as_ref() {
                 gl.blend_equation(GL::FUNC_ADD);
                 gl.blend_func(GL::SRC_ALPHA, GL::ONE);
                 gl.uniform1f(shader.alpha_loc.as_ref(), 0.15);
 
-                base.0.draw_tex(
+                self.base.draw_tex(
                     assets,
                     gl,
                     &assets.red_glow_tex,
@@ -798,7 +835,7 @@ impl Projectile {
                 gl.uniform1f(shader.alpha_loc.as_ref(), 1.);
             }
         }
-        if let Projectile::Missile { trail, .. } = self {
+        if let Some(MissileComponent { ref trail, .. }) = self.missile_component {
             let shader = assets.trail_shader.as_ref().unwrap();
             gl.use_program(Some(&shader.program));
 
@@ -855,32 +892,27 @@ impl Projectile {
             gl.use_program(assets.sprite_shader.as_ref().map(|o| &o.program));
             enable_buffer(gl, &assets.rect_buffer, 2, shader.vertex_position);
         }
-        use Projectile::*;
+        use ProjectileType::*;
         self.draw_tex(
             assets,
             gl,
-            match self {
-                Bullet(_) => &assets.bullet_texture,
-                EnemyBullet(_) => &assets.enemy_bullet_texture,
-                PhaseBullet { .. } => &assets.phase_bullet_tex,
-                SpiralBullet { .. } => &assets.spiral_bullet_tex,
-                Missile { .. } => &assets.missile_tex,
+            match self.ty {
+                Bullet => &assets.bullet_texture,
+                EnemyBullet => &assets.enemy_bullet_texture,
+                PhaseBullet => &assets.phase_bullet_tex,
+                SpiralBullet => &assets.spiral_bullet_tex,
+                Missile => &assets.missile_tex,
             },
-            Some(match self {
-                Bullet(_) | EnemyBullet(_) | Missile { .. } => [BULLET_SIZE; 2],
-                PhaseBullet { .. } | SpiralBullet { .. } => LONG_BULLET_SIZE,
+            Some(match self.ty {
+                Bullet | EnemyBullet | Missile => [BULLET_SIZE; 2],
+                PhaseBullet | SpiralBullet => LONG_BULLET_SIZE,
             }),
         );
     }
 
     #[cfg(all(not(feature = "webgl"), feature = "piston"))]
     pub fn draw(&self, c: &Context, g: &mut G2d, assets: &Assets) {
-        if let Projectile::Missile {
-            base: _,
-            target: _,
-            trail,
-        } = self
-        {
+        if let Some(MissileComponent { ref trail, .. }) = self.missile_component {
             let mut iter = trail.iter().enumerate();
             if let Some(mut prev) = iter.next() {
                 for e in iter {
@@ -898,12 +930,12 @@ impl Projectile {
         self.draw_tex(
             c,
             g,
-            match self {
-                Projectile::Bullet(_) => &assets.bullet_tex,
-                Projectile::EnemyBullet(_) => &assets.ebullet_tex,
-                Projectile::PhaseBullet { .. } => &assets.phase_bullet_tex,
-                Projectile::SpiralBullet { .. } => &assets.spiral_bullet_tex,
-                Projectile::Missile { .. } => &assets.missile_tex,
+            match self.ty {
+                ProjectileType::Bullet => &assets.bullet_tex,
+                ProjectileType::EnemyBullet => &assets.ebullet_tex,
+                ProjectileType::PhaseBullet => &assets.phase_bullet_tex,
+                ProjectileType::SpiralBullet => &assets.spiral_bullet_tex,
+                ProjectileType::Missile => &assets.missile_tex,
             },
             None,
         );

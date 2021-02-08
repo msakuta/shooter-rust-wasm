@@ -67,7 +67,8 @@ use crate::assets_piston::Assets;
 use crate::assets_webgl::Assets;
 use crate::consts::*;
 use crate::entity::{
-    BulletBase, DeathReason, Enemy, EnemyType, Entity, Item, Player, Projectile, TempEntity, Weapon,
+    DeathReason, Enemy, EnemyType, Entity, Item, Player, Projectile, ProjectileType, TempEntity,
+    Weapon,
 };
 use xor128::Xor128;
 
@@ -238,18 +239,11 @@ impl ShooterState {
                         self.shots_bullet += 1;
                         ent = Self::add_blend(ent);
                         self.bullets
-                            .insert(ent.id, Projectile::Bullet(BulletBase(ent)));
+                            .insert(ent.id, Projectile::new(ProjectileType::Bullet, ent));
                     } else {
                         self.shots_missile += 1;
                         ent = ent.health(5);
-                        self.bullets.insert(
-                            ent.id,
-                            Projectile::Missile {
-                                base: BulletBase(ent),
-                                target: 0,
-                                trail: vec![],
-                            },
-                        );
+                        self.bullets.insert(ent.id, Projectile::new_missile(ent));
                     }
                 }
             }
@@ -525,7 +519,7 @@ impl ShooterState {
 
                     match death_reason {
                         DeathReason::Killed | DeathReason::HitPlayer => {
-                            add_tent(!matches!(b, Projectile::Missile { .. }), &b.pos, self)
+                            add_tent(!matches!(b.ty, ProjectileType::Missile), &b.pos, self)
                         }
                         _ => {}
                     }

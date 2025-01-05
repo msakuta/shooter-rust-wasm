@@ -78,7 +78,7 @@ impl ShieldedBoss {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 struct CentipedeJoint([f64; 2], i32);
 
 pub struct CentipedeEnemy {
@@ -122,7 +122,9 @@ impl Enemy {
         self.id
     }
 
-    pub fn damage(&mut self, val: i32, rect: &[f64; 4]) {
+    /// Apply damage to this enemy, within specified rectangle area.
+    /// The area can be important for patial damages.
+    pub fn damage(&mut self, val: i32, rect: &[f64; 4]) -> Option<Enemy> {
         match self {
             Enemy::Enemy1(ref mut base)
             | Enemy::Boss(ref mut base)
@@ -138,19 +140,41 @@ impl Enemy {
                 }
             }
             Enemy::Centipede(ref mut centipede) => {
-                if let Some(joint) = centipede.joints.iter_mut().find(|joint| {
+                let self_velo = centipede.base.velo;
+
+                let damaged_joint = centipede.joints.iter_mut().enumerate().find(|(_, joint)| {
                     let rect2 = bounding_box(&joint.0, ENEMY_SIZE);
                     bbox_intersects(rect, &rect2)
-                }) {
+                });
+
+                if let Some((i, joint)) = damaged_joint {
                     joint.1 -= val;
                     if joint.1 <= 0 {
-                        centipede.base.health = -1;
+                        let joint_pos = joint.0;
+                        if centipede.joints.len() == 1 {
+                            centipede.base.health = -1;
+                        } else {
+                            let heading =
+                                self_velo[1].atan2(self_velo[0]) + std::f64::consts::PI / 2.;
+                            let speed = vec2_len(self_velo);
+                            let velo = [speed * heading.cos(), speed * heading.sin()];
+                            let back_joints = if i + 1 < centipede.joints.len() {
+                                Some(centipede.joints[i + 1..].to_vec())
+                            } else {
+                                None
+                            };
+                            centipede.joints.resize(i, CentipedeJoint::default());
+                            return back_joints.map(|back_joints| {
+                                Enemy::new_centipede_joints(joint_pos, velo, back_joints)
+                            });
+                        }
                     }
                 } else {
                     centipede.base.health -= 1;
                 }
             }
         }
+        None
     }
 
     pub fn predicted_damage(&self) -> i32 {
@@ -246,8 +270,12 @@ impl Enemy {
                     return death;
                 }
                 let mut prev = centipede.base.pos;
+                let Some(first_joint) = centipede.joints.first_mut() else {
+                    return Some(DeathReason::Killed);
+                };
+                first_joint.0 = centipede.base.pos;
                 let mut ret = false;
-                for joint in &mut centipede.joints {
+                for joint in centipede.joints.iter_mut().skip(1) {
                     let delta = vec2_sub(joint.0, prev);
                     let dist = vec2_len(delta);
                     if JOINT_LENGTH < dist {
@@ -393,8 +421,17 @@ impl Enemy {
     pub fn new_centipede(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Enemy {
         Enemy::Centipede(CentipedeEnemy {
             // The head is particularly tough
-            base: EnemyBase::new(id_gen, pos, velo).health(128),
-            joints: vec![CentipedeJoint(pos, 64); 10],
+            base: EnemyBase::new(id_gen, pos, velo).health(32),
+            joints: vec![CentipedeJoint(pos, 16); 10],
+        })
+    }
+
+    fn new_centipede_joints(pos: [f64; 2], velo: [f64; 2], joints: Vec<CentipedeJoint>) -> Enemy {
+        let mut dummy = 0;
+        Enemy::Centipede(CentipedeEnemy {
+            // The head is particularly tough
+            base: EnemyBase::new(&mut dummy, pos, velo).health(32),
+            joints,
         })
     }
 }

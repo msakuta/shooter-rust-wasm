@@ -98,12 +98,16 @@ impl Projectile {
     ) -> Option<DeathReason> {
         let bbox = Self::get_bb_base(base);
         let &mut BulletBase(ent) = &mut base;
+        let mut spawned_enemy = None;
         for enemy in enemies.iter_mut() {
             if enemy.test_hit(bbox) {
-                enemy.damage(ent.health, &bbox);
+                spawned_enemy = enemy.damage(ent.health, &bbox);
                 ent.health = 0;
                 break;
             }
+        }
+        if let Some(enemy) = spawned_enemy {
+            enemies.push(enemy);
         }
         ent.animate()
     }

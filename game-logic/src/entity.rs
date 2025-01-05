@@ -365,3 +365,11 @@ impl Item {
         }
     }
 }
+
+fn bounding_box(pos: &[f64; 2], size: f64) -> [f64; 4] {
+    [pos[0] - size, pos[1] - size, pos[0] + size, pos[1] + size]
+}
+
+fn bbox_intersects(rect: &[f64; 4], rect2: &[f64; 4]) -> bool {
+    rect[0] < rect2[2] && rect2[0] < rect[2] && rect[1] < rect2[3] && rect2[1] < rect[3]
+}

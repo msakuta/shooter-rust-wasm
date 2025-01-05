@@ -22,7 +22,10 @@ use crate::{xor128::Xor128, ShooterState};
 
 #[cfg(feature = "webgl")]
 use super::draw_tex;
-use super::{BulletBase, DeathReason, Entity, Item, Projectile, ENEMY_SIZE};
+use super::{
+    bbox_intersects, bounding_box, BulletBase, DeathReason, Entity, Item, Projectile, ENEMY_SIZE,
+    SCREEN_RECT,
+};
 
 const JOINT_LENGTH: f64 = 20.;
 
@@ -143,6 +146,8 @@ impl Enemy {
                     if joint.1 <= 0 {
                         centipede.base.health = -1;
                     }
+                } else {
+                    centipede.base.health -= 1;
                 }
             }
         }
@@ -236,8 +241,12 @@ impl Enemy {
                 base.animate()
             }
             Enemy::Centipede(centipede) => {
-                let ret = centipede.base.animate();
+                let death = centipede.base.animate();
+                if let Some(DeathReason::Killed) = death {
+                    return death;
+                }
                 let mut prev = centipede.base.pos;
+                let mut ret = false;
                 for joint in &mut centipede.joints {
                     let delta = vec2_sub(joint.0, prev);
                     let dist = vec2_len(delta);
@@ -246,8 +255,16 @@ impl Enemy {
                         joint.0 = vec2_add(prev, normalized);
                     }
                     prev = joint.0;
+                    let joint_rect = bounding_box(&joint.0, ENEMY_SIZE);
+                    if bbox_intersects(&joint_rect, &SCREEN_RECT) {
+                        ret = true;
+                    }
                 }
-                ret
+                if !ret {
+                    Some(DeathReason::RangeOut)
+                } else {
+                    None
+                }
             }
         }
     }
@@ -380,12 +397,4 @@ impl Enemy {
             joints: vec![CentipedeJoint(pos, 64); 10],
         })
     }
-}
-
-fn bounding_box(pos: &[f64; 2], size: f64) -> [f64; 4] {
-    [pos[0] - size, pos[1] - size, pos[0] + size, pos[1] + size]
-}
-
-fn bbox_intersects(rect: &[f64; 4], rect2: &[f64; 4]) -> bool {
-    rect[0] < rect2[2] && rect2[0] < rect[2] && rect[1] < rect2[3] && rect2[1] < rect[3]
 }

@@ -2,7 +2,7 @@ use fps_counter::FPSCounter;
 use game_logic::{
     assets_piston::Assets,
     consts::*,
-    entity::{Entity, Matrix, TempEntity, Weapon, WEAPON_SET},
+    entity::{Entity, Matrix, TempEntity, TempEntityType, Weapon, WEAPON_SET},
     ShooterError, ShooterState,
 };
 use piston_window::math::translate;
@@ -354,10 +354,12 @@ fn main() -> Result<(), ShooterError> {
             Event::Loop(Loop::Update(_)) => {
                 last_ups = ups_counter.tick();
 
+                type TT = TempEntityType;
+
                 // id_gen and rng must be passed as arguments since they are mutable
                 // borrows and needs to be released for each iteration.
                 // These variables are used in between multiple invocation of this closure.
-                let mut add_tent = |is_bullet, pos: &[f64; 2], state: &mut ShooterState| {
+                let mut add_tent = |ty: TT, pos: &[f64; 2], state: &mut ShooterState| {
                     let mut ent = Entity::new(
                         &mut state.id_gen,
                         [
@@ -367,18 +369,26 @@ fn main() -> Result<(), ShooterError> {
                         [0., 0.],
                     )
                     .rotation(state.rng.gen() as f32 * 2. * std::f32::consts::PI);
-                    let (playback_rate, max_frames) = if is_bullet { (2, 8) } else { (4, 6) };
+                    let (playback_rate, max_frames) = match ty {
+                        TT::Explode => (2, 8),
+                        TT::Explode2 => (4, 6),
+                        TT::Blood => (2, 4),
+                    };
                     ent = ent.health((max_frames * playback_rate) as i32);
 
                     state.tent.push(TempEntity {
                         base: ent,
-                        texture: if is_bullet {
-                            assets.explode_tex.clone()
-                        } else {
-                            assets.explode2_tex.clone()
+                        texture: match ty {
+                            TT::Explode => assets.explode_tex.clone(),
+                            TT::Explode2 => assets.explode2_tex.clone(),
+                            TT::Blood => todo!(),
                         },
                         max_frames,
-                        width: if is_bullet { 16 } else { 32 },
+                        width: match ty {
+                            TT::Explode => 16,
+                            TT::Explode2 => 32,
+                            TT::Blood => 16,
+                        },
                         playback_rate,
                     })
                 };
@@ -418,7 +428,7 @@ fn main() -> Result<(), ShooterError> {
 
                 state.animate_items();
 
-                state.animate_enemies();
+                state.animate_enemies(&mut |_ty, _state| {});
 
                 state.animate_bullets(&mut add_tent);
 

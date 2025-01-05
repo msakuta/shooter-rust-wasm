@@ -350,7 +350,7 @@ impl Enemy {
             context,
             g,
             match self {
-                Enemy::Enemy1(_) => &assets.enemy_tex,
+                Enemy::Enemy1(_) | Enemy::Centipede(_) => &assets.enemy_tex,
                 Enemy::Boss(_) | Enemy::ShieldedBoss(_) => &assets.boss_tex,
                 Enemy::SpiralEnemy(_) => &assets.spiral_enemy_tex,
             },

@@ -38,6 +38,31 @@ Install npm packages
 
     npm i
 
+Newer Node.js versions may show this error:
+
+```
+node:internal/crypto/hash:68
+  this[kHandle] = new _Hash(algorithm, xofLen);
+...(omitted)...
+  opensslErrorStack: [ 'error:03000086:digital envelope routines::initialization error' ],
+  library: 'digital envelope routines',
+  reason: 'unsupported',
+  code: 'ERR_OSSL_EVP_UNSUPPORTED'
+}
+```
+
+In this case, set this env variable on your shell:
+
+```
+export NODE_OPTIONS = "--openssl-legacy-provider"
+```
+
+Or like this in Windows PowerShell:
+
+```
+$env:NODE_OPTIONS = "--openssl-legacy-provider"
+```
+
 ### Launch development server
 
     npm start

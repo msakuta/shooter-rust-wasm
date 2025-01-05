@@ -4,6 +4,11 @@ mod temp_entity;
 
 use core::f64;
 
+pub use self::{
+    enemy::{Enemy, EnemyBase, ShieldedBoss},
+    projectile::{BulletBase, Projectile},
+    temp_entity::TempEntity,
+};
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use crate::assets_piston::Assets;
 #[cfg(feature = "webgl")]
@@ -11,11 +16,6 @@ use crate::assets_webgl::Assets;
 use crate::consts::*;
 #[cfg(feature = "webgl")]
 use cgmath::{Matrix4, Rad, Vector3};
-pub use self::{
-    enemy::{EnemyBase, Enemy, ShieldedBoss},
-    projectile::{Projectile, BulletBase},
-    temp_entity::TempEntity,
-};
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use piston_window::{
     draw_state::Blend,
@@ -23,9 +23,9 @@ use piston_window::{
     *,
 };
 use rotate_enum::RotateEnum;
+use std::ops::Deref;
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use std::ops::{Add, Mul};
-use std::ops::Deref;
 use vecmath::vec2_add;
 #[cfg(feature = "webgl")]
 use web_sys::{WebGlRenderingContext as GL, WebGlTexture};
@@ -127,21 +127,14 @@ impl Entity {
         texture: &WebGlTexture,
         scale: Option<[f64; 2]>,
     ) {
-        let shader = assets.sprite_shader.as_ref().unwrap();
-        context.bind_texture(GL::TEXTURE_2D, Some(&texture));
-        let pos = &self.pos;
-        let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], 0.));
-        let rotation = Matrix4::from_angle_z(Rad(self.rotation as f64));
-        let scale = scale.unwrap_or([1., 1.]);
-        let scale_mat = Matrix4::from_nonuniform_scale(scale[0], scale[1], 1.);
-        let transform = assets.world_transform * translation * rotation * scale_mat;
-        context.uniform_matrix4fv_with_f32_array(
-            shader.transform_loc.as_ref(),
-            false,
-            <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform.cast().unwrap()),
+        draw_tex(
+            &self.pos,
+            self.rotation as f64,
+            assets,
+            context,
+            texture,
+            scale,
         );
-
-        context.draw_arrays(GL::TRIANGLE_FAN, 0, 4);
     }
 
     #[cfg(all(not(feature = "webgl"), feature = "piston"))]
@@ -188,6 +181,31 @@ impl Entity {
             None
         }
     }
+}
+
+#[cfg(feature = "webgl")]
+pub fn draw_tex(
+    pos: &[f64; 2],
+    rotation: f64,
+    assets: &Assets,
+    context: &GL,
+    texture: &WebGlTexture,
+    scale: Option<[f64; 2]>,
+) {
+    let shader = assets.sprite_shader.as_ref().unwrap();
+    context.bind_texture(GL::TEXTURE_2D, Some(&texture));
+    let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], 0.));
+    let rotation = Matrix4::from_angle_z(Rad(rotation));
+    let scale = scale.unwrap_or([1., 1.]);
+    let scale_mat = Matrix4::from_nonuniform_scale(scale[0], scale[1], 1.);
+    let transform = assets.world_transform * translation * rotation * scale_mat;
+    context.uniform_matrix4fv_with_f32_array(
+        shader.transform_loc.as_ref(),
+        false,
+        <Matrix4<f32> as AsRef<[f32; 16]>>::as_ref(&transform.cast().unwrap()),
+    );
+
+    context.draw_arrays(GL::TRIANGLE_FAN, 0, 4);
 }
 
 #[derive(PartialEq, Clone, Copy, Debug, RotateEnum)]
@@ -292,8 +310,6 @@ impl Player {
         self.score / 256
     }
 }
-
-
 
 pub enum Item {
     PowerUp(Entity),

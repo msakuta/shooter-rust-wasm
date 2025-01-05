@@ -268,7 +268,7 @@ impl ShooterState {
             for enemy in &mut enemies {
                 if enemy.test_hit(beam_rect) {
                     add_tent(true, &enemy.pos, self);
-                    enemy.damage(1 + level);
+                    enemy.damage(1 + level, &beam_rect);
                 }
             }
             self.enemies = enemies;
@@ -286,7 +286,7 @@ impl ShooterState {
                                 && ebb[1] < b[1] + 4.
                                 && b[1] - 4. <= ebb[3]
                             {
-                                enemy.damage(2 + state.rng.gen_range(0, 3) as i32);
+                                enemy.damage(2 + state.rng.gen_range(0, 3) as i32, &ebb);
                                 add_tent(true, &b, state);
                                 return false;
                             }
@@ -308,25 +308,27 @@ impl ShooterState {
             let dice = 256;
             let wave = self.time % wave_period;
             if wave < wave_period * 3 / 4 {
-                let [enemy_count, boss_count, shielded_boss_count, spiral_count] =
-                    self.enemies.iter().fold([0; 4], |mut c, e| match e {
+                let [mut enemy_count, mut boss_count, mut shielded_boss_count, mut spiral_count, mut centipede_count] =
+                    [0; 5];
+                for e in self.enemies.iter() {
+                    match e {
                         Enemy::Enemy1(_) => {
-                            c[0] += 1;
-                            c
+                            enemy_count += 1;
                         }
                         Enemy::Boss(_) => {
-                            c[1] += 1;
-                            c
+                            boss_count += 1;
                         }
                         Enemy::ShieldedBoss(_) => {
-                            c[2] += 1;
-                            c
+                            shielded_boss_count += 1;
                         }
                         Enemy::SpiralEnemy(_) => {
-                            c[3] += 1;
-                            c
+                            spiral_count += 1;
                         }
-                    });
+                        Enemy::Centipede(_) => {
+                            centipede_count += 1;
+                        }
+                    }
+                }
                 let gen_amount = self.player.difficulty_level() * 4 + 8;
                 let mut i = self.rng.gen_range(0, dice);
                 while i < gen_amount {
@@ -347,10 +349,11 @@ impl ShooterState {
                             0
                         },
                         if spiral_count < 4 { 4 } else { 0 },
+                        if centipede_count < 4 { 4 } else { 0 },
                     ];
                     let allweights = weights.iter().sum();
                     let accum = {
-                        let mut accum = [0; 4];
+                        let mut accum = [0; 5];
                         let mut accumulator = 0;
                         for (i, e) in weights.iter().enumerate() {
                             accumulator += e;
@@ -399,7 +402,8 @@ impl ShooterState {
                                     pos,
                                     velo,
                                 )),
-                                _ => Enemy::new_spiral(&mut self.id_gen, pos, velo),
+                                3 => Enemy::new_spiral(&mut self.id_gen, pos, velo),
+                                _ => Enemy::new_centipede(&mut self.id_gen, pos, velo),
                             });
                         }
                     }
@@ -494,6 +498,7 @@ impl ShooterState {
                     Enemy::Boss(_) => "boss",
                     Enemy::ShieldedBoss(_) => "ShieldedBoss",
                     Enemy::SpiralEnemy(_) => "SpiralEnemy",
+                    Enemy::Centipede(_) => "Centipede",
                 },
                 dead.get_id(),
                 *i,

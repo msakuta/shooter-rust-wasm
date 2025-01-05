@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use vecmath::vec2_scale;
+use vecmath::{vec2_add, vec2_len, vec2_scale, vec2_sub};
 #[cfg(feature = "webgl")]
 use web_sys::WebGlRenderingContext as GL;
 
@@ -18,11 +18,13 @@ use piston_window::{
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use super::Matrix;
 
-use crate::{
-    xor128::Xor128, ShooterState
-};
+use crate::{xor128::Xor128, ShooterState};
 
+#[cfg(feature = "webgl")]
+use super::draw_tex;
 use super::{BulletBase, DeathReason, Entity, Item, Projectile, ENEMY_SIZE};
+
+const JOINT_LENGTH: f64 = 20.;
 
 pub struct EnemyBase {
     pub base: Entity,
@@ -73,11 +75,20 @@ impl ShieldedBoss {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct CentipedeJoint([f64; 2], i32);
+
+pub struct CentipedeEnemy {
+    base: EnemyBase,
+    joints: Vec<CentipedeJoint>,
+}
+
 pub enum Enemy {
     Enemy1(EnemyBase),
     Boss(EnemyBase),
     ShieldedBoss(ShieldedBoss),
     SpiralEnemy(EnemyBase),
+    Centipede(CentipedeEnemy),
 }
 
 impl Deref for Enemy {
@@ -86,6 +97,7 @@ impl Deref for Enemy {
         match self {
             Enemy::Enemy1(base) | Enemy::Boss(base) | Enemy::SpiralEnemy(base) => &base,
             Enemy::ShieldedBoss(boss) => &boss.base,
+            Enemy::Centipede(centipede) => &centipede.base,
         }
     }
 }
@@ -97,6 +109,7 @@ impl DerefMut for Enemy {
             | Enemy::Boss(ref mut base)
             | Enemy::SpiralEnemy(ref mut base) => base,
             Enemy::ShieldedBoss(ref mut boss) => &mut boss.base,
+            Enemy::Centipede(ref mut centipede) => &mut centipede.base,
         }
     }
 }
@@ -106,7 +119,7 @@ impl Enemy {
         self.id
     }
 
-    pub fn damage(&mut self, val: i32) {
+    pub fn damage(&mut self, val: i32, rect: &[f64; 4]) {
         match self {
             Enemy::Enemy1(ref mut base)
             | Enemy::Boss(ref mut base)
@@ -121,6 +134,17 @@ impl Enemy {
                     boss.shield_health -= val
                 }
             }
+            Enemy::Centipede(ref mut centipede) => {
+                if let Some(joint) = centipede.joints.iter_mut().find(|joint| {
+                    let rect2 = bounding_box(&joint.0, ENEMY_SIZE);
+                    bbox_intersects(rect, &rect2)
+                }) {
+                    joint.1 -= val;
+                    if joint.1 <= 0 {
+                        centipede.base.health = -1;
+                    }
+                }
+            }
         }
     }
 
@@ -130,6 +154,7 @@ impl Enemy {
                 base.predicted_damage
             }
             Enemy::ShieldedBoss(boss) => boss.base.predicted_damage,
+            Enemy::Centipede(centipede) => centipede.base.predicted_damage,
         }
     }
 
@@ -210,15 +235,43 @@ impl Enemy {
                 base.rotation -= std::f32::consts::PI * 0.01;
                 base.animate()
             }
+            Enemy::Centipede(centipede) => {
+                let ret = centipede.base.animate();
+                let mut prev = centipede.base.pos;
+                for joint in &mut centipede.joints {
+                    let delta = vec2_sub(joint.0, prev);
+                    let dist = vec2_len(delta);
+                    if JOINT_LENGTH < dist {
+                        let normalized = vec2_scale(delta, JOINT_LENGTH / dist);
+                        joint.0 = vec2_add(prev, normalized);
+                    }
+                    prev = joint.0;
+                }
+                ret
+            }
         }
     }
 
     #[cfg(feature = "webgl")]
     pub fn draw(&self, _state: &ShooterState, gl: &GL, assets: &Assets) {
-        use crate::BOSS_SIZE;
+        use crate::{BOSS_SIZE, CENTIPEDE_SIZE};
 
         use super::ENEMY_SIZE;
 
+        // Draw tails behind
+        if let Enemy::Centipede(centipede) = self {
+            for (i, joint) in centipede.joints.iter().enumerate() {
+                let f = i as f64 / centipede.joints.len() as f64;
+                draw_tex(
+                    &joint.0,
+                    0.,
+                    assets,
+                    gl,
+                    &assets.enemy_tex,
+                    Some([(CENTIPEDE_SIZE * (1. - f) + ENEMY_SIZE * f); 2]),
+                );
+            }
+        }
 
         self.draw_tex(
             assets,
@@ -227,10 +280,12 @@ impl Enemy {
                 Enemy::Enemy1(_) => &assets.enemy_tex,
                 Enemy::Boss(_) | Enemy::ShieldedBoss(_) => &assets.boss_tex,
                 Enemy::SpiralEnemy(_) => &assets.spiral_enemy_tex,
+                Enemy::Centipede(_) => &assets.enemy_tex,
             },
             Some(match self {
                 Enemy::Enemy1(_) => [ENEMY_SIZE; 2],
                 Enemy::Boss(_) | Enemy::ShieldedBoss(_) | Enemy::SpiralEnemy(_) => [BOSS_SIZE; 2],
+                Enemy::Centipede(_) => [CENTIPEDE_SIZE; 2],
             }),
         );
 
@@ -291,8 +346,14 @@ impl Enemy {
     }
 
     pub fn test_hit(&self, rect: [f64; 4]) -> bool {
+        if let Enemy::Centipede(centipede) = self {
+            return centipede.joints.iter().any(|joint| {
+                let rect2 = bounding_box(&joint.0, ENEMY_SIZE);
+                bbox_intersects(&rect, &rect2)
+            });
+        }
         let rect2 = self.get_bb();
-        rect[0] < rect2[2] && rect2[0] < rect[2] && rect[1] < rect2[3] && rect2[1] < rect[3]
+        bbox_intersects(&rect, &rect2)
     }
 
     pub fn get_bb(&self) -> [f64; 4] {
@@ -301,12 +362,7 @@ impl Enemy {
         } else {
             ENEMY_SIZE
         };
-        [
-            self.pos[0] - size,
-            self.pos[1] - size,
-            self.pos[0] + size,
-            self.pos[1] + size,
-        ]
+        bounding_box(&self.pos, size)
     }
 
     pub fn is_boss(&self) -> bool {
@@ -316,4 +372,20 @@ impl Enemy {
     pub fn new_spiral(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Enemy {
         Enemy::SpiralEnemy(EnemyBase::new(id_gen, pos, velo))
     }
+
+    pub fn new_centipede(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Enemy {
+        Enemy::Centipede(CentipedeEnemy {
+            // The head is particularly tough
+            base: EnemyBase::new(id_gen, pos, velo).health(128),
+            joints: vec![CentipedeJoint(pos, 64); 10],
+        })
+    }
+}
+
+fn bounding_box(pos: &[f64; 2], size: f64) -> [f64; 4] {
+    [pos[0] - size, pos[1] - size, pos[0] + size, pos[1] + size]
+}
+
+fn bbox_intersects(rect: &[f64; 4], rect2: &[f64; 4]) -> bool {
+    rect[0] < rect2[2] && rect2[0] < rect[2] && rect[1] < rect2[3] && rect2[1] < rect[3]
 }

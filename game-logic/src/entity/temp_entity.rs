@@ -16,7 +16,7 @@ use piston_window::{
 };
 
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
-use super::{Matrix};
+use super::Matrix;
 
 #[cfg(feature = "webgl")]
 pub struct TempEntity {

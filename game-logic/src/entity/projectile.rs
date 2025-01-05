@@ -1,21 +1,19 @@
-use std::ops::Deref;
-#[cfg(feature = "webgl")]
-use web_sys::WebGlRenderingContext as GL;
-#[cfg(feature = "webgl")]
-use crate::assets_webgl::Assets;
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use crate::assets_piston::Assets;
 #[cfg(feature = "webgl")]
+use crate::assets_webgl::Assets;
+#[cfg(feature = "webgl")]
 use cgmath::{Matrix3, Matrix4};
+use std::ops::Deref;
+#[cfg(feature = "webgl")]
+use web_sys::WebGlRenderingContext as GL;
 
 #[cfg(feature = "webgl")]
 use crate::{enable_buffer, vertex_buffer_data};
 use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
 
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
-use piston_window::{
-    *,
-};
+use piston_window::*;
 
 use super::{DeathReason, Enemy, Entity, Player, BULLET_SIZE, MISSILE_SPEED};
 
@@ -102,7 +100,7 @@ impl Projectile {
         let &mut BulletBase(ent) = &mut base;
         for enemy in enemies.iter_mut() {
             if enemy.test_hit(bbox) {
-                enemy.damage(ent.health);
+                enemy.damage(ent.health, &bbox);
                 ent.health = 0;
                 break;
             }

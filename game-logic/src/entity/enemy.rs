@@ -1,10 +1,24 @@
 use std::ops::{Deref, DerefMut};
 
 use vecmath::vec2_scale;
+#[cfg(feature = "webgl")]
 use web_sys::WebGlRenderingContext as GL;
 
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+use crate::assets_piston::Assets;
+#[cfg(feature = "webgl")]
+use crate::assets_webgl::Assets;
+
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+use piston_window::{
+    math::{rotate_radians, scale, translate},
+    *,
+};
+
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+use super::Matrix;
+
 use crate::{
-    assets_webgl::Assets,
     xor128::Xor128, ShooterState
 };
 

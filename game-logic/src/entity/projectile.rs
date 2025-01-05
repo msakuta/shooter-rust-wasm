@@ -1,13 +1,21 @@
 use std::ops::Deref;
+#[cfg(feature = "webgl")]
 use web_sys::WebGlRenderingContext as GL;
 #[cfg(feature = "webgl")]
 use crate::assets_webgl::Assets;
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+use crate::assets_piston::Assets;
 #[cfg(feature = "webgl")]
 use cgmath::{Matrix3, Matrix4};
 
 #[cfg(feature = "webgl")]
 use crate::{enable_buffer, vertex_buffer_data};
 use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
+
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+use piston_window::{
+    *,
+};
 
 use super::{DeathReason, Enemy, Entity, Player, BULLET_SIZE, MISSILE_SPEED};
 

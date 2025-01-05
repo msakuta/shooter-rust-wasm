@@ -19,7 +19,7 @@ pub use self::{
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use piston_window::{
     draw_state::Blend,
-    math::{rotate_radians, scale, translate},
+    math::{rotate_radians, translate},
     *,
 };
 use rotate_enum::RotateEnum;

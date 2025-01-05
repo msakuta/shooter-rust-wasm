@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+#[cfg(feature = "webgl")]
 use crate::assets_webgl::Assets;
 
 use super::{DeathReason, Entity};
@@ -8,6 +9,14 @@ use cgmath::{Matrix3, Matrix4, Rad, Vector2, Vector3};
 #[cfg(feature = "webgl")]
 use web_sys::{WebGlRenderingContext as GL, WebGlTexture};
 
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+use piston_window::{
+    math::{rotate_radians, translate},
+    *,
+};
+
+#[cfg(all(not(feature = "webgl"), feature = "piston"))]
+use super::{Matrix};
 
 #[cfg(feature = "webgl")]
 pub struct TempEntity {

@@ -34,7 +34,7 @@ fn main() -> Result<(), ShooterError> {
         let mut newvp = *viewport;
         newvp.window_size[0] = (wwidth as f64 * (vp_ratio / ratio).max(1.)) as u32;
         newvp.window_size[1] = (wheight as f64 * (ratio / vp_ratio).max(1.)) as u32;
-        #[cfg(debug)]
+        #[cfg(debug_assertions)]
         for (vp, name) in [(viewport, "Old"), (&newvp, "New")].iter() {
             println!(
                 "{} Context: ratio: {} vp.rect: {:?} vp.draw: {:?} vp.window: {:?}",

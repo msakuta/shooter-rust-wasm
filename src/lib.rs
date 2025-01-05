@@ -11,7 +11,7 @@ use game_logic::{
     console_log,
     consts::*,
     enable_buffer,
-    entity::{Entity, TempEntity, Weapon},
+    entity::{Enemy, Entity, TempEntity, TempEntityType, Weapon},
     js_str, vertex_buffer_data,
 };
 
@@ -258,40 +258,51 @@ impl ShooterState {
 
         let assets = &self.assets;
 
+        type TT = TempEntityType;
+
         // state must be passed as arguments since they are mutable
         // borrows and needs to be released for each iteration.
         // These variables are used in between multiple invocation of this closure.
-        let mut add_tent = |is_bullet, pos: &[f64; 2], state: &mut game_logic::ShooterState| {
-            let mut ent = Entity::new(
-                &mut state.id_gen,
-                [
-                    pos[0] + 4. * (state.rng.gen() - 0.5),
-                    pos[1] + 4. * (state.rng.gen() - 0.5),
-                ],
-                [0., 0.],
-            )
-            .rotation(state.rng.gen() as f32 * 2. * std::f32::consts::PI);
-            let (playback_rate, max_frames) = if is_bullet { (2, 8) } else { (4, 6) };
-            ent = ent.health((max_frames * playback_rate) as i32);
+        let add_tent =
+            |ty: TT, pos: &[f64; 2], velo: &[f64; 2], state: &mut game_logic::ShooterState| {
+                let mut ent = Entity::new(
+                    &mut state.id_gen,
+                    [
+                        pos[0] + 4. * (state.rng.gen() - 0.5),
+                        pos[1] + 4. * (state.rng.gen() - 0.5),
+                    ],
+                    *velo,
+                )
+                .rotation(state.rng.gen() as f32 * 2. * std::f32::consts::PI);
+                let (playback_rate, max_frames, repeats, width, shrink) = match ty {
+                    TT::Explode => (2, 8, 1, 16, 0.),
+                    TT::Explode2 => (4, 6, 1, 32, 0.),
+                    TT::Blood => (2, 4, state.rng.gen_range(2, 5), 16, 1.),
+                };
+                ent = ent.health((max_frames * playback_rate * repeats) as i32);
 
-            state.tent.push(TempEntity {
-                base: ent,
-                texture: if is_bullet {
-                    assets.explode_tex.clone()
-                } else {
-                    assets.explode2_tex.clone()
-                },
-                max_frames,
-                width: if is_bullet { 16 } else { 32 },
-                playback_rate,
-                image_width: if is_bullet { 128 } else { 256 },
-                size: if is_bullet {
-                    EXPLODE_SIZE
-                } else {
-                    EXPLODE2_SIZE
-                },
-            });
-        };
+                state.tent.push(TempEntity {
+                    base: ent,
+                    texture: match ty {
+                        TT::Explode => assets.explode_tex.clone(),
+                        TT::Explode2 => assets.explode2_tex.clone(),
+                        TT::Blood => assets.blood_tex.clone(),
+                    },
+                    max_frames,
+                    width,
+                    playback_rate,
+                    image_width: match ty {
+                        TT::Explode => 128,
+                        TT::Explode2 => 256,
+                        TT::Blood => 64,
+                    },
+                    size: match ty {
+                        TT::Explode | TT::Blood => EXPLODE_SIZE,
+                        _ => EXPLODE2_SIZE,
+                    },
+                    shrink_rate: shrink,
+                });
+            };
 
         let wave_period = self.state.gen_enemies();
 
@@ -330,8 +341,11 @@ impl ShooterState {
                 // Use the same seed twice to reproduce random sequence
                 let seed = self.state.rng.nexti();
 
-                self.state
-                    .try_shoot(self.input_state.shoot_pressed, seed, &mut add_tent);
+                self.state.try_shoot(
+                    self.input_state.shoot_pressed,
+                    seed,
+                    &mut |ty, pos, state| add_tent(ty, pos, &[0.; 2], state),
+                );
 
                 if Weapon::Light == weapon {
                     let gl = &context;
@@ -399,7 +413,7 @@ impl ShooterState {
                                             && ebb[1] < b[1] + 4.
                                             && b[1] - 4. <= ebb[3]
                                         {
-                                            add_tent(true, &b, state);
+                                            add_tent(TempEntityType::Explode2, &b, &[0.; 2], state);
                                             return false;
                                         }
                                     }
@@ -524,11 +538,28 @@ impl ShooterState {
 
         self.state.draw_enemies(&context, &self.assets);
 
-        self.state.animate_enemies();
+        const BLOOD_SPEED: f64 = 2.;
+
+        self.state.animate_enemies(&mut |enemy, state| {
+            let blood_count = match enemy {
+                Enemy::Boss(_) | Enemy::SpiralEnemy(_) => 15,
+                _ => 5,
+            };
+            for _i in 0..blood_count {
+                let velo = [
+                    state.rng.gen_rangef(-BLOOD_SPEED, BLOOD_SPEED),
+                    state.rng.gen_rangef(-BLOOD_SPEED, BLOOD_SPEED),
+                ];
+                add_tent(TT::Blood, &enemy.pos, &velo, state);
+            }
+        });
 
         self.state.draw_bullets(&context, &self.assets);
 
-        if self.state.animate_bullets(&mut add_tent) {
+        if self
+            .state
+            .animate_bullets(&mut |ty, pos, state| add_tent(ty, pos, &[0.; 2], state))
+        {
             let game_over_elem = document()
                 .get_element_by_id("gameOver")
                 .ok_or_else(|| js_str!("game over elem not found"))?;

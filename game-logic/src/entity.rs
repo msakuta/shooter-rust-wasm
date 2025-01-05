@@ -7,7 +7,7 @@ use core::f64;
 pub use self::{
     enemy::{Enemy, EnemyBase, ShieldedBoss},
     projectile::{BulletBase, Projectile},
-    temp_entity::TempEntity,
+    temp_entity::{TempEntity, TempEntityType},
 };
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use crate::assets_piston::Assets;
@@ -42,7 +42,7 @@ pub struct Entity {
     pub blend: Option<Blend>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum DeathReason {
     RangeOut,
     Killed,

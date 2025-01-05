@@ -1,3 +1,4 @@
+use entity::TempEntityType;
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use piston_window::{draw_state::Blend, G2d, *};
 #[cfg(feature = "webgl")]
@@ -216,7 +217,7 @@ impl ShooterState {
         &mut self,
         key_shoot: bool,
         seed: u32,
-        add_tent: &mut impl FnMut(bool, &[f64; 2], &mut ShooterState),
+        add_tent: &mut impl FnMut(TempEntityType, &[f64; 2], &mut ShooterState),
     ) -> usize {
         let weapon = self.player.weapon;
         let shoot_period = if let Weapon::Bullet = weapon { 5 } else { 50 };
@@ -267,7 +268,7 @@ impl ShooterState {
             let mut enemies = std::mem::take(&mut self.enemies);
             for enemy in &mut enemies {
                 if enemy.test_hit(beam_rect) {
-                    add_tent(true, &enemy.pos, self);
+                    add_tent(TempEntityType::Explode2, &enemy.pos, self);
                     enemy.damage(1 + level, &beam_rect);
                 }
             }
@@ -287,7 +288,7 @@ impl ShooterState {
                                 && b[1] - 4. <= ebb[3]
                             {
                                 enemy.damage(2 + state.rng.gen_range(0, 3) as i32, &ebb);
-                                add_tent(true, &b, state);
+                                add_tent(TempEntityType::Explode2, &b, state);
                                 return false;
                             }
                         }
@@ -460,17 +461,17 @@ impl ShooterState {
         }
     }
 
-    pub fn animate_enemies(&mut self) {
+    pub fn animate_enemies(&mut self, on_killed: &mut impl FnMut(&Enemy, &mut ShooterState)) {
         if self.paused {
             return;
         }
-        let mut to_delete: Vec<usize> = Vec::new();
+        let mut to_delete: Vec<(DeathReason, usize)> = Vec::new();
         let mut enemies = std::mem::take(&mut self.enemies);
         for (i, enemy) in &mut ((&mut enemies).iter_mut().enumerate()) {
             if !self.paused {
                 let killed = {
                     if let Some(death_reason) = enemy.animate(self) {
-                        to_delete.push(i);
+                        to_delete.push((death_reason, i));
                         matches!(death_reason, DeathReason::Killed)
                     } else {
                         false
@@ -489,8 +490,11 @@ impl ShooterState {
         }
         self.enemies = enemies;
 
-        for i in to_delete.iter().rev() {
-            let dead = self.enemies.remove(*i);
+        for (death_reason, i) in to_delete.into_iter().rev() {
+            let dead = self.enemies.remove(i);
+            if matches!(death_reason, DeathReason::Killed) {
+                on_killed(&dead, self);
+            }
             println!(
                 "Deleted Enemy {} id={}: {} / {}",
                 match dead {
@@ -501,7 +505,7 @@ impl ShooterState {
                     Enemy::Centipede(_) => "Centipede",
                 },
                 dead.get_id(),
-                *i,
+                i,
                 self.enemies.len()
             );
         }
@@ -524,7 +528,7 @@ impl ShooterState {
     /// Returns true if player was killed, signaling game over event.
     pub fn animate_bullets(
         &mut self,
-        add_tent: &mut impl FnMut(bool, &[f64; 2], &mut ShooterState),
+        add_tent: &mut impl FnMut(TempEntityType, &[f64; 2], &mut ShooterState),
     ) -> bool {
         if self.paused {
             return false;
@@ -539,7 +543,11 @@ impl ShooterState {
 
                     match death_reason {
                         DeathReason::Killed | DeathReason::HitPlayer => {
-                            add_tent(!matches!(b, Projectile::Missile { .. }), &b.pos, self)
+                            let tt = match b {
+                                Projectile::Missile { .. } => TempEntityType::Explode2,
+                                _ => TempEntityType::Explode,
+                            };
+                            add_tent(tt, &b.pos, self)
                         }
                         _ => {}
                     }

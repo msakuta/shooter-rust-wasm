@@ -11,6 +11,7 @@ import missile from "../assets/missile.png";
 import redGlow from "../assets/red-glow.png";
 import explode from "../assets/explode.png";
 import explode2 from "../assets/explode2.png";
+import blood from "../assets/blood.png";
 import trail from "../assets/trail.png";
 import beam from "../assets/beam.png";
 import back from "../assets/back2.jpg";
@@ -84,6 +85,7 @@ rust
       ["redGlow", redGlow],
       ["explode", explode],
       ["explode2", explode2],
+      ["blood", blood],
       ["trail", trail],
       ["beam", beam],
       ["back", back],

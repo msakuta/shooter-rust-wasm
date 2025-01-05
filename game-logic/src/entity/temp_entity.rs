@@ -27,6 +27,14 @@ pub struct TempEntity {
     pub playback_rate: u32,
     pub image_width: u32,
     pub size: f64,
+    pub shrink_rate: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TempEntityType {
+    Explode,
+    Explode2,
+    Blood,
 }
 
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
@@ -56,8 +64,14 @@ impl TempEntity {
         context.bind_texture(GL::TEXTURE_2D, Some(&self.texture));
         let rotation = Matrix4::from_angle_z(Rad(self.base.rotation as f64));
         let translation = Matrix4::from_translation(Vector3::new(pos[0], pos[1], 0.));
-        let scale = Matrix4::from_scale(self.size);
-        let frame = self.max_frames - (self.base.health as u32 / self.playback_rate) as u32;
+        let scale = if self.shrink_rate == 0. {
+            self.size
+        } else {
+            self.size
+                .min(self.base.health as f64 * self.shrink_rate as f64)
+        };
+        let scale = Matrix4::from_scale(scale);
+        let frame = self.max_frames as i32 - (self.base.health / self.playback_rate as i32) as i32;
         // let image   = Image::new().rect([0f64, 0f64, self.width as f64, tex2.get_height() as f64])
         //     .src_rect([frame as f64 * self.width as f64, 0., self.width as f64, tex2.get_height() as f64]);
         let transform = assets.world_transform * translation * rotation * scale;

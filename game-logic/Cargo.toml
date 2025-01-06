@@ -17,6 +17,8 @@ piston_window = { version = "0.81.0", optional = true }
 piston2d-sprite = { version = "0.50.0", optional = true }
 piston2d-gfx_graphics = { version = "0.56.0", optional = true }
 rotate-enum = "0.1.0"
+# parser = { git = "https://github.com/msakuta/rusty-parser.git" }
+parser = { path = "../../rusty-parser/parser" }
 
 [features]
 webgl = [ "web-sys", "wasm-bindgen", "js-sys" ]

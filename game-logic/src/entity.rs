@@ -22,11 +22,12 @@ use rotate_enum::RotateEnum;
 use std::ops::{Add, Mul};
 use std::{
     ops::{Deref, DerefMut},
-    rc::Rc,
+    rc::Rc, cell::RefCell,
 };
 use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, vec2_sub};
 #[cfg(feature = "webgl")]
 use web_sys::{WebGlRenderingContext as GL, WebGlTexture};
+use parser::Vm;
 
 /// The base structure of all Entities.  Implements common methods.
 pub struct Entity {
@@ -600,6 +601,7 @@ pub struct Projectile {
     pub phase_bullet_component: Option<PhaseBulletComponent>,
     pub spiral_bullet_component: Option<SpiralBulletComponent>,
     pub missile_component: Option<MissileComponent>,
+    vm: Option<Rc<RefCell<Vm>>>,
 }
 
 impl Deref for Projectile {
@@ -624,17 +626,26 @@ impl Projectile {
             phase_bullet_component: None,
             spiral_bullet_component: None,
             missile_component: None,
+            vm: None,
         }
     }
 
     pub fn new_phase(base: Entity) -> Projectile {
         let velo = base.velo;
+
+        let bytecode = match compile_program(&"scripts/spiral.rscl") {
+            Ok(bytecode) => bytecode,
+            Err(e) => panic!("Compile error: {e}"),
+        };
+        let program = Rc::new(bytecode);
+
         Projectile {
             ty: ProjectileType::PhaseBullet,
             base,
             phase_bullet_component: Some(PhaseBulletComponent { velo, phase: 0. }),
             spiral_bullet_component: None,
             missile_component: None,
+            vm: Some(program)
         }
     }
 
@@ -649,6 +660,7 @@ impl Projectile {
                 traveled: 0.,
             }),
             missile_component: None,
+            vm: None,
         }
     }
 
@@ -662,6 +674,7 @@ impl Projectile {
                 target: 0,
                 trail: vec![],
             }),
+            vm: None,
         }
     }
 
@@ -941,6 +954,41 @@ impl Projectile {
         );
     }
 }
+
+pub(crate) fn compile_program(src: &str) -> Result<ByteCode, Box<dyn Error>> {
+    let source = std::fs::read_to_string(src).expect("Source file could be read");
+    let ast = parse_program(src, &source).expect("Source parsed");
+
+    let mut type_check_context = TypeCheckContext::new();
+    extend_funcs(|name, func| type_check_context.add_fn(name, func));
+    match type_check(&ast, &mut type_check_context) {
+        Ok(_) => println!("Typecheck Ok"),
+        Err(e) => {
+            return Err(format!(
+                "{}:{}:{}: {}",
+                src,
+                e.span.location_line(),
+                e.span.get_utf8_column(),
+                e
+            )
+            .into())
+        }
+    }
+
+    let mut compiler = Compiler::new();
+    compiler.compile(&ast)?;
+
+    if args.disasm {
+        compiler.disasm(&mut std::io::stdout())?;
+    }
+
+    let mut bytecode = compiler.into_bytecode();
+    extend_funcs(|name, func| bytecode.add_fn(name, func));
+
+    Ok(bytecode)
+}
+
+
 
 pub enum Item {
     PowerUp(Entity),

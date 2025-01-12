@@ -93,7 +93,7 @@ pub struct ShooterState {
     pub game_over: bool,
     pub player: Player,
     pub enemies: EntitySet<Enemy>,
-    pub items: Vec<Item>,
+    pub items: EntitySet<Item>,
     pub bullets: EntitySet<Projectile>,
     pub tent: EntitySet<TempEntity>,
     pub rng: Xor128,
@@ -113,7 +113,7 @@ impl Default for ShooterState {
             game_over: false,
             player,
             enemies: EntitySet::new(),
-            items: vec![],
+            items: EntitySet::new(),
             bullets: EntitySet::new(),
             tent: EntitySet::new(),
             rng: Xor128::new(3232132),
@@ -417,18 +417,15 @@ impl ShooterState {
         if self.paused {
             return;
         }
-        let mut to_delete = vec![];
-        for (i, e) in &mut ((&mut self.items).iter_mut().enumerate()) {
-            if !self.paused && (e.animate(&mut self.player).is_some()) {
-                to_delete.push(i);
-                continue;
+        let mut items = std::mem::take(&mut self.items);
+        items.retain_id(|id, e| {
+            if e.animate(&mut self.player).is_some() {
+                println!("Deleted Item {} / {}", id, self.items.len());
+                return false;
             }
-        }
-
-        for i in to_delete.iter().rev() {
-            self.items.remove(*i);
-            println!("Deleted Item {} / {}", *i, self.items.len());
-        }
+            true
+        });
+        self.items = items;
     }
 
     #[cfg(feature = "webgl")]
@@ -481,7 +478,7 @@ impl ShooterState {
                 self.player.score += if enemy.is_boss() { 10 } else { 1 };
                 if self.rng.gen_range(0, 100) < 20 {
                     let ent = Entity::new(enemy.pos, [0., 1.]);
-                    self.items.push(enemy.drop_item(ent));
+                    self.items.insert(enemy.drop_item(ent));
                 }
             }
             ret

@@ -266,7 +266,6 @@ impl ShooterState {
         let add_tent =
             |ty: TT, pos: &[f64; 2], velo: &[f64; 2], state: &mut game_logic::ShooterState| {
                 let mut ent = Entity::new(
-                    &mut state.id_gen,
                     [
                         pos[0] + 4. * (state.rng.gen() - 0.5),
                         pos[1] + 4. * (state.rng.gen() - 0.5),
@@ -281,7 +280,7 @@ impl ShooterState {
                 };
                 ent = ent.health((max_frames * playback_rate * repeats) as i32);
 
-                state.tent.push(TempEntity {
+                state.tent.insert(TempEntity {
                     base: ent,
                     texture: match ty {
                         TT::Explode => assets.explode_tex.clone(),
@@ -406,6 +405,7 @@ impl ShooterState {
                                 LIGHTNING_VERTICES,
                                 &mut |state: &mut game_logic::ShooterState, segment: &[f64; 4]| {
                                     let b = [segment[2], segment[3]];
+                                    let mut res = true;
                                     for enemy in state.enemies.iter_mut() {
                                         let ebb = enemy.get_bb();
                                         if ebb[0] < b[0] + 4.
@@ -413,11 +413,14 @@ impl ShooterState {
                                             && ebb[1] < b[1] + 4.
                                             && b[1] - 4. <= ebb[3]
                                         {
-                                            add_tent(TempEntityType::Explode2, &b, &[0.; 2], state);
-                                            return false;
+                                            res = false;
+                                            break;
                                         }
                                     }
-                                    true
+                                    if !res {
+                                        add_tent(TempEntityType::Explode2, &b, &[0.; 2], state);
+                                    }
+                                    res
                                 },
                             );
                             let hit = length != LIGHTNING_VERTICES;

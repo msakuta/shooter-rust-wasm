@@ -34,13 +34,13 @@ fn main() -> Result<(), ShooterError> {
         let mut newvp = *viewport;
         newvp.window_size[0] = (wwidth as f64 * (vp_ratio / ratio).max(1.)) as u32;
         newvp.window_size[1] = (wheight as f64 * (ratio / vp_ratio).max(1.)) as u32;
-        #[cfg(debug_assertions)]
-        for (vp, name) in [(viewport, "Old"), (&newvp, "New")].iter() {
-            println!(
-                "{} Context: ratio: {} vp.rect: {:?} vp.draw: {:?} vp.window: {:?}",
-                name, ratio, vp.rect, vp.draw_size, vp.window_size
-            );
-        }
+        // #[cfg(debug_assertions)]
+        // for (vp, name) in [(viewport, "Old"), (&newvp, "New")].iter() {
+        //     println!(
+        //         "{} Context: ratio: {} vp.rect: {:?} vp.draw: {:?} vp.window: {:?}",
+        //         name, ratio, vp.rect, vp.draw_size, vp.window_size
+        //     );
+        // }
         newvp
     }
 
@@ -361,7 +361,6 @@ fn main() -> Result<(), ShooterError> {
                 // These variables are used in between multiple invocation of this closure.
                 let mut add_tent = |ty: TT, pos: &[f64; 2], state: &mut ShooterState| {
                     let mut ent = Entity::new(
-                        &mut state.id_gen,
                         [
                             pos[0] + 4. * (state.rng.gen() - 0.5),
                             pos[1] + 4. * (state.rng.gen() - 0.5),
@@ -376,7 +375,7 @@ fn main() -> Result<(), ShooterError> {
                     };
                     ent = ent.health((max_frames * playback_rate) as i32);
 
-                    state.tent.push(TempEntity {
+                    state.tent.insert(TempEntity {
                         base: ent,
                         texture: match ty {
                             TT::Explode => assets.explode_tex.clone(),
@@ -390,7 +389,7 @@ fn main() -> Result<(), ShooterError> {
                             TT::Blood => 16,
                         },
                         playback_rate,
-                    })
+                    });
                 };
 
                 if !state.game_over && !state.paused {

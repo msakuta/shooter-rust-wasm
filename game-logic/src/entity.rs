@@ -1,13 +1,19 @@
 mod enemy;
+mod entity_id;
+mod entity_set;
 mod projectile;
 mod temp_entity;
+mod ref_option;
 
 use core::f64;
 
 pub use self::{
     enemy::{Enemy, EnemyBase, ShieldedBoss},
+    entity_id::EntityId,
+    entity_set::{EntityEntry, EntitySet},
     projectile::{BulletBase, Projectile},
     temp_entity::{TempEntity, TempEntityType},
+    ref_option::{RefOption, RefMutOption},
 };
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use crate::assets_piston::Assets;

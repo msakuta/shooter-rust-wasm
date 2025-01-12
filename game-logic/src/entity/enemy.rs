@@ -28,6 +28,9 @@ use super::{
 };
 
 const JOINT_LENGTH: f64 = 20.;
+const CENTIPEDE_STRAIGHT_TASK_TIME: u32 = 100;
+const CENTIPEDE_TURN_TASK_TIME: u32 = 100;
+const TURN_RATE: f64 = 0.4 * std::f64::consts::PI / CENTIPEDE_TURN_TASK_TIME as f64;
 
 pub struct EnemyBase {
     pub base: Entity,
@@ -81,9 +84,20 @@ impl ShieldedBoss {
 #[derive(Clone, Copy, Debug, Default)]
 struct CentipedeJoint([f64; 2], i32);
 
+#[derive(Debug)]
+#[repr(C)]
+enum CentipedeTask {
+    Straight,
+    TurnLeft,
+    TurnRight,
+}
+
 pub struct CentipedeEnemy {
     base: EnemyBase,
     joints: Vec<CentipedeJoint>,
+    task: CentipedeTask,
+    task_time: u32,
+    heading: f64,
 }
 
 pub enum Enemy {
@@ -257,6 +271,39 @@ impl Enemy {
                 let Some(first_joint) = centipede.joints.first_mut() else {
                     return Some(DeathReason::Killed);
                 };
+
+                if centipede.task_time < 1 {
+                    centipede.task = match state.rng.gen_range(0, 4) {
+                        0..2 => CentipedeTask::Straight,
+                        2 => CentipedeTask::TurnLeft,
+                        3 => CentipedeTask::TurnRight,
+                        _ => unreachable!(),
+                    };
+                    centipede.task_time = match centipede.task {
+                        CentipedeTask::Straight => CENTIPEDE_STRAIGHT_TASK_TIME,
+                        _ => CENTIPEDE_TURN_TASK_TIME,
+                    };
+                    console_log!("Centipede task: {:?}", centipede.task);
+                } else {
+                    centipede.task_time -= 1;
+                }
+
+                match centipede.task {
+                    CentipedeTask::Straight => {}
+                    CentipedeTask::TurnLeft => {
+                        centipede.heading =
+                            (centipede.heading + TURN_RATE).rem_euclid(2. * std::f64::consts::PI);
+                    }
+                    CentipedeTask::TurnRight => {
+                        centipede.heading =
+                            (centipede.heading - TURN_RATE).rem_euclid(2. * std::f64::consts::PI);
+                    }
+                }
+
+                let speed = vec2_len(centipede.base.velo);
+                centipede.base.velo[0] = centipede.heading.cos() * speed;
+                centipede.base.velo[1] = centipede.heading.sin() * speed;
+
                 first_joint.0 = centipede.base.pos;
                 let mut ret = false;
                 for joint in centipede.joints.iter_mut().skip(1) {
@@ -420,6 +467,9 @@ impl Enemy {
             // The head is particularly tough
             base: EnemyBase::new(pos, velo).health(32),
             joints: vec![CentipedeJoint(pos, 16); 10],
+            task: CentipedeTask::Straight,
+            task_time: CENTIPEDE_STRAIGHT_TASK_TIME,
+            heading: velo[1].atan2(velo[0]),
         })
     }
 
@@ -428,6 +478,9 @@ impl Enemy {
             // The head is particularly tough
             base: EnemyBase::new(pos, velo).health(32),
             joints,
+            task: CentipedeTask::Straight,
+            task_time: CENTIPEDE_STRAIGHT_TASK_TIME,
+            heading: velo[1].atan2(velo[0]),
         })
     }
 }

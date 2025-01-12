@@ -4,6 +4,7 @@ use piston_window::{draw_state::Blend, G2d, *};
 #[cfg(feature = "webgl")]
 use std::rc::Rc;
 use std::vec;
+use vecmath::{vec2_normalized, vec2_scale};
 #[cfg(feature = "webgl")]
 use wasm_bindgen::{prelude::*, JsCast};
 #[cfg(feature = "webgl")]
@@ -382,6 +383,7 @@ impl ShooterState {
                             }
                             _ => panic!("RNG returned out of range"),
                         };
+                        let velo = vec2_scale(vec2_normalized(velo), 0.5);
                         if let Some(x) = accum.iter().position(|x| dice < *x) {
                             self.enemies.insert(match x {
                                 0 => Enemy::Enemy1(EnemyBase::new(pos, velo).health(3)),

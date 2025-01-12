@@ -280,7 +280,7 @@ impl ShooterState {
                 };
                 ent = ent.health((max_frames * playback_rate * repeats) as i32);
 
-                state.tent.push(TempEntity {
+                state.tent.insert(TempEntity {
                     base: ent,
                     texture: match ty {
                         TT::Explode => assets.explode_tex.clone(),

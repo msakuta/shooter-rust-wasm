@@ -95,7 +95,7 @@ pub struct ShooterState {
     pub enemies: EntitySet<Enemy>,
     pub items: Vec<Item>,
     pub bullets: EntitySet<Projectile>,
-    pub tent: Vec<TempEntity>,
+    pub tent: EntitySet<TempEntity>,
     pub rng: Xor128,
     pub shots_bullet: usize,
     pub shots_missile: usize,
@@ -115,7 +115,7 @@ impl Default for ShooterState {
             enemies: EntitySet::new(),
             items: vec![],
             bullets: EntitySet::new(),
-            tent: vec![],
+            tent: EntitySet::new(),
             rng: Xor128::new(3232132),
             shots_bullet: 0,
             shots_missile: 0,
@@ -573,18 +573,14 @@ impl ShooterState {
         if self.paused {
             return;
         }
-        let mut to_delete = vec![];
-        for (i, e) in &mut ((&mut self.tent).iter_mut().enumerate()) {
-            if !self.paused && e.animate_temp().is_some() {
-                to_delete.push(i);
-                continue;
+        let paused = self.paused;
+        self.tent.retain(|e| {
+            if !paused && e.animate_temp().is_some() {
+                //println!("Deleted tent {} / {}", *i, bullets.len());
+                return false;
             }
-        }
-
-        for i in to_delete.iter().rev() {
-            self.tent.remove(*i);
-            //println!("Deleted tent {} / {}", *i, bullets.len());
-        }
+            true
+        });
     }
 }
 

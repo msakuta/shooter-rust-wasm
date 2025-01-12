@@ -289,17 +289,30 @@ impl Enemy {
 
         // Draw tails behind
         if let Enemy::Centipede(centipede) = self {
+            let mut last_pos = None;
             for (i, joint) in centipede.joints.iter().enumerate() {
                 let f = i as f64 / centipede.joints.len() as f64;
+                let rotation = if let Some(last_pos) = last_pos {
+                    let delta = vec2_sub(joint.0, last_pos);
+                    delta[1].atan2(delta[0])
+                } else {
+                    self.velo[1].atan2(self.velo[0])
+                };
+                last_pos = Some(joint.0);
                 draw_tex(
                     &joint.0,
-                    0.,
+                    rotation,
                     assets,
                     gl,
-                    &assets.enemy_tex,
+                    if i == 0 {
+                        &assets.centipede_head_tex
+                    } else {
+                        &assets.centipede_segment_tex
+                    },
                     Some([(CENTIPEDE_SIZE * (1. - f) + ENEMY_SIZE * f); 2]),
                 );
             }
+            return;
         }
 
         self.draw_tex(
@@ -309,12 +322,12 @@ impl Enemy {
                 Enemy::Enemy1(_) => &assets.enemy_tex,
                 Enemy::Boss(_) | Enemy::ShieldedBoss(_) => &assets.boss_tex,
                 Enemy::SpiralEnemy(_) => &assets.spiral_enemy_tex,
-                Enemy::Centipede(_) => &assets.enemy_tex,
+                _ => unreachable!(),
             },
             Some(match self {
                 Enemy::Enemy1(_) => [ENEMY_SIZE; 2],
                 Enemy::Boss(_) | Enemy::ShieldedBoss(_) | Enemy::SpiralEnemy(_) => [BOSS_SIZE; 2],
-                Enemy::Centipede(_) => [CENTIPEDE_SIZE; 2],
+                _ => unreachable!(),
             }),
         );
 

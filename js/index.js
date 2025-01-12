@@ -7,6 +7,8 @@ import spiralBullet from "../assets/spiral-bullet.png";
 import boss from "../assets/boss.png";
 import shield from "../assets/shield.png";
 import spiralEnemy from "../assets/spiral-enemy.png";
+import centipedeHead from "../assets/centipede-head.png";
+import centipedeSegment from "../assets/centipede-segment.png";
 import missile from "../assets/missile.png";
 import redGlow from "../assets/red-glow.png";
 import explode from "../assets/explode.png";
@@ -81,6 +83,8 @@ rust
       ["boss", boss],
       ["shield", shield],
       ["spiralEnemy", spiralEnemy],
+      ["centipedeHead", centipedeHead],
+      ["centipedeSegment", centipedeSegment],
       ["missile", missile],
       ["redGlow", redGlow],
       ["explode", explode],

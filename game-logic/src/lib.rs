@@ -455,6 +455,12 @@ impl ShooterState {
                 if let Some(death_reason) = enemy.animate(self) {
                     if matches!(death_reason, DeathReason::Killed) {
                         on_killed(enemy, self);
+                        self.player.kills += 1;
+                        self.player.score += if enemy.is_boss() { 10 } else { 1 };
+                        if self.rng.gen_range(0, 100) < 20 {
+                            let ent = Entity::new(enemy.pos, [0., 1.]);
+                            self.items.insert(enemy.drop_item(ent));
+                        }
                     }
                     println!(
                         "Deleted Enemy {} id={} {}",
@@ -473,14 +479,6 @@ impl ShooterState {
                     true
                 }
             };
-            if !ret {
-                self.player.kills += 1;
-                self.player.score += if enemy.is_boss() { 10 } else { 1 };
-                if self.rng.gen_range(0, 100) < 20 {
-                    let ent = Entity::new(enemy.pos, [0., 1.]);
-                    self.items.insert(enemy.drop_item(ent));
-                }
-            }
             ret
         });
         self.enemies = enemies;

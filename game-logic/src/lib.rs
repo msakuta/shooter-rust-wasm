@@ -1,9 +1,9 @@
-use entity::TempEntityType;
+use entity::{EntitySet, TempEntityType};
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use piston_window::{draw_state::Blend, G2d, *};
 #[cfg(feature = "webgl")]
 use std::rc::Rc;
-use std::{collections::HashMap, vec};
+use std::vec;
 #[cfg(feature = "webgl")]
 use wasm_bindgen::{prelude::*, JsCast};
 #[cfg(feature = "webgl")]
@@ -91,11 +91,10 @@ pub struct ShooterState {
     pub disptime: usize,
     pub paused: bool,
     pub game_over: bool,
-    pub id_gen: u32,
     pub player: Player,
-    pub enemies: Vec<Enemy>,
+    pub enemies: EntitySet<Enemy>,
     pub items: Vec<Item>,
-    pub bullets: HashMap<u32, Projectile>,
+    pub bullets: EntitySet<Projectile>,
     pub tent: Vec<TempEntity>,
     pub rng: Xor128,
     pub shots_bullet: usize,
@@ -104,12 +103,7 @@ pub struct ShooterState {
 
 impl Default for ShooterState {
     fn default() -> Self {
-        let mut id_gen = 0;
-        let mut player = Player::new(Entity::new(
-            &mut id_gen,
-            [FWIDTH / 2., FHEIGHT * 3. / 4.],
-            [0., 0.],
-        ));
+        let mut player = Player::new(Entity::new([FWIDTH / 2., FHEIGHT * 3. / 4.], [0., 0.]));
         player.reset();
 
         ShooterState {
@@ -117,11 +111,10 @@ impl Default for ShooterState {
             disptime: 0,
             paused: false,
             game_over: false,
-            id_gen,
             player,
-            enemies: vec![],
+            enemies: EntitySet::new(),
             items: vec![],
-            bullets: HashMap::new(),
+            bullets: EntitySet::new(),
             tent: vec![],
             rng: Xor128::new(3232132),
             shots_bullet: 0,
@@ -138,7 +131,6 @@ impl ShooterState {
         #[cfg(feature = "webgl")]
         self.tent.clear();
         self.time = 0;
-        self.id_gen = 0;
         self.player.reset();
         self.shots_bullet = 0;
         self.shots_missile = 0;
@@ -233,25 +225,20 @@ impl ShooterState {
                     } else {
                         MISSILE_SPEED
                     };
-                    let mut ent =
-                        Entity::new(&mut self.id_gen, player.base.pos, [i as f64, -speed])
-                            .rotation((i as f32).atan2(speed as f32));
+                    let mut ent = Entity::new(player.base.pos, [i as f64, -speed])
+                        .rotation((i as f32).atan2(speed as f32));
                     if let Weapon::Bullet = weapon {
                         self.shots_bullet += 1;
                         ent = Self::add_blend(ent);
-                        self.bullets
-                            .insert(ent.id, Projectile::Bullet(BulletBase(ent)));
+                        self.bullets.insert(Projectile::Bullet(BulletBase(ent)));
                     } else {
                         self.shots_missile += 1;
                         ent = ent.health(5);
-                        self.bullets.insert(
-                            ent.id,
-                            Projectile::Missile {
-                                base: BulletBase(ent),
-                                target: 0,
-                                trail: vec![],
-                            },
-                        );
+                        self.bullets.insert(Projectile::Missile {
+                            base: BulletBase(ent),
+                            target: None,
+                            trail: vec![],
+                        });
                     }
                 }
             }
@@ -266,7 +253,7 @@ impl ShooterState {
             ];
 
             let mut enemies = std::mem::take(&mut self.enemies);
-            for enemy in &mut enemies {
+            for enemy in enemies.iter_mut() {
                 if enemy.test_hit(beam_rect) {
                     add_tent(TempEntityType::Explode2, &enemy.pos, self);
                     enemy.damage(1 + level, &beam_rect);
@@ -280,6 +267,7 @@ impl ShooterState {
                     LIGHTNING_VERTICES,
                     &mut |state: &mut Self, segment: &[f64; 4]| {
                         let b = [segment[2], segment[3]];
+                        let mut res = true;
                         for enemy in state.enemies.iter_mut() {
                             let ebb = enemy.get_bb();
                             if ebb[0] < b[0] + 4.
@@ -288,11 +276,15 @@ impl ShooterState {
                                 && b[1] - 4. <= ebb[3]
                             {
                                 enemy.damage(2 + state.rng.gen_range(0, 3) as i32, &ebb);
-                                add_tent(TempEntityType::Explode2, &b, state);
-                                return false;
+                                res = false;
+                                // Needs to break this loop before add_tent for borrow checker limitation.
+                                break;
                             }
                         }
-                        true
+                        if !res {
+                            add_tent(TempEntityType::Explode2, &b, state);
+                        }
+                        res
                     },
                 );
             });
@@ -312,7 +304,7 @@ impl ShooterState {
                 let [mut enemy_count, mut boss_count, mut shielded_boss_count, mut spiral_count, mut centipede_count] =
                     [0; 5];
                 for e in self.enemies.iter() {
-                    match e {
+                    match &*e {
                         Enemy::Enemy1(_) => {
                             enemy_count += 1;
                         }
@@ -391,20 +383,12 @@ impl ShooterState {
                             _ => panic!("RNG returned out of range"),
                         };
                         if let Some(x) = accum.iter().position(|x| dice < *x) {
-                            self.enemies.push(match x {
-                                0 => Enemy::Enemy1(
-                                    EnemyBase::new(&mut self.id_gen, pos, velo).health(3),
-                                ),
-                                1 => Enemy::Boss(
-                                    EnemyBase::new(&mut self.id_gen, pos, velo).health(64),
-                                ),
-                                2 => Enemy::ShieldedBoss(ShieldedBoss::new(
-                                    &mut self.id_gen,
-                                    pos,
-                                    velo,
-                                )),
-                                3 => Enemy::new_spiral(&mut self.id_gen, pos, velo),
-                                _ => Enemy::new_centipede(&mut self.id_gen, pos, velo),
+                            self.enemies.insert(match x {
+                                0 => Enemy::Enemy1(EnemyBase::new(pos, velo).health(3)),
+                                1 => Enemy::Boss(EnemyBase::new(pos, velo).health(64)),
+                                2 => Enemy::ShieldedBoss(ShieldedBoss::new(pos, velo)),
+                                3 => Enemy::new_spiral(pos, velo),
+                                _ => Enemy::new_centipede(pos, velo),
                             });
                         }
                     }
@@ -442,8 +426,8 @@ impl ShooterState {
         }
 
         for i in to_delete.iter().rev() {
-            let dead = self.items.remove(*i);
-            println!("Deleted Item id={}: {} / {}", dead.id, *i, self.items.len());
+            self.items.remove(*i);
+            println!("Deleted Item {} / {}", *i, self.items.len());
         }
     }
 
@@ -465,62 +449,56 @@ impl ShooterState {
         if self.paused {
             return;
         }
-        let mut to_delete: Vec<(DeathReason, usize)> = Vec::new();
         let mut enemies = std::mem::take(&mut self.enemies);
-        for (i, enemy) in &mut ((&mut enemies).iter_mut().enumerate()) {
-            if !self.paused {
-                let killed = {
-                    if let Some(death_reason) = enemy.animate(self) {
-                        to_delete.push((death_reason, i));
-                        matches!(death_reason, DeathReason::Killed)
-                    } else {
-                        false
+        enemies.retain_id(|id, enemy| {
+            if self.paused {
+                return true;
+            }
+            let ret = {
+                if let Some(death_reason) = enemy.animate(self) {
+                    if matches!(death_reason, DeathReason::Killed) {
+                        on_killed(enemy, self);
                     }
-                };
-                if killed {
-                    self.player.kills += 1;
-                    self.player.score += if enemy.is_boss() { 10 } else { 1 };
-                    if self.rng.gen_range(0, 100) < 20 {
-                        let ent = Entity::new(&mut self.id_gen, enemy.pos, [0., 1.]);
-                        self.items.push(enemy.drop_item(ent));
-                    }
-                    continue;
+                    println!(
+                        "Deleted Enemy {} id={} {}",
+                        match enemy {
+                            Enemy::Enemy1(_) => "enemy",
+                            Enemy::Boss(_) => "boss",
+                            Enemy::ShieldedBoss(_) => "ShieldedBoss",
+                            Enemy::SpiralEnemy(_) => "SpiralEnemy",
+                            Enemy::Centipede(_) => "Centipede",
+                        },
+                        id,
+                        self.enemies.len()
+                    );
+                    false
+                } else {
+                    true
+                }
+            };
+            if !ret {
+                self.player.kills += 1;
+                self.player.score += if enemy.is_boss() { 10 } else { 1 };
+                if self.rng.gen_range(0, 100) < 20 {
+                    let ent = Entity::new(enemy.pos, [0., 1.]);
+                    self.items.push(enemy.drop_item(ent));
                 }
             }
-        }
+            ret
+        });
         self.enemies = enemies;
-
-        for (death_reason, i) in to_delete.into_iter().rev() {
-            let dead = self.enemies.remove(i);
-            if matches!(death_reason, DeathReason::Killed) {
-                on_killed(&dead, self);
-            }
-            println!(
-                "Deleted Enemy {} id={}: {} / {}",
-                match dead {
-                    Enemy::Enemy1(_) => "enemy",
-                    Enemy::Boss(_) => "boss",
-                    Enemy::ShieldedBoss(_) => "ShieldedBoss",
-                    Enemy::SpiralEnemy(_) => "SpiralEnemy",
-                    Enemy::Centipede(_) => "Centipede",
-                },
-                dead.get_id(),
-                i,
-                self.enemies.len()
-            );
-        }
     }
 
     #[cfg(feature = "webgl")]
     pub fn draw_bullets(&self, gl: &GL, assets: &Assets) {
-        for b in self.bullets.values() {
+        for b in self.bullets.iter() {
             b.draw(gl, assets);
         }
     }
 
     #[cfg(all(not(feature = "webgl"), feature = "piston"))]
     pub fn draw_bullets(&self, context: &Context, graphics: &mut G2d, assets: &Assets) {
-        for b in self.bullets.values() {
+        for b in self.bullets.iter() {
             b.draw(&context, graphics, &assets);
         }
     }
@@ -534,53 +512,45 @@ impl ShooterState {
             return false;
         }
         let mut ret = false;
-        let mut bullets_to_delete: Vec<u32> = Vec::new();
+        let mut bullets_to_delete = Vec::new();
         let mut bullets = std::mem::take(&mut self.bullets);
-        for (i, b) in &mut bullets {
-            if !self.paused {
-                if let Some(death_reason) = b.animate_bullet(&mut self.enemies, &mut self.player) {
-                    bullets_to_delete.push(*i);
+        bullets.retain_id(|i, b| {
+            if self.paused {
+                return true;
+            }
+            let Some(death_reason) = b.animate_bullet(&mut self.enemies, &mut self.player) else {
+                return true;
+            };
+            bullets_to_delete.push(i);
 
-                    match death_reason {
-                        DeathReason::Killed | DeathReason::HitPlayer => {
-                            let tt = match b {
-                                Projectile::Missile { .. } => TempEntityType::Explode2,
-                                _ => TempEntityType::Explode,
-                            };
-                            add_tent(tt, &b.pos, self)
-                        }
-                        _ => {}
-                    }
+            match death_reason {
+                DeathReason::Killed | DeathReason::HitPlayer => {
+                    let tt = match b {
+                        Projectile::Missile { .. } => TempEntityType::Explode2,
+                        _ => TempEntityType::Explode,
+                    };
+                    add_tent(tt, &b.pos, self)
+                }
+                _ => {}
+            }
 
-                    if let DeathReason::HitPlayer = death_reason {
-                        if self.player.invtime == 0 && !self.game_over && 0 < self.player.lives {
-                            self.player.lives -= 1;
-                            if self.player.lives == 0 {
-                                self.game_over = true;
-                                ret = true;
-                            } else {
-                                self.player.invtime = PLAYER_INVINCIBLE_TIME;
-                            }
-                        }
+            if let DeathReason::HitPlayer = death_reason {
+                if self.player.invtime == 0 && !self.game_over && 0 < self.player.lives {
+                    self.player.lives -= 1;
+                    if self.player.lives == 0 {
+                        self.game_over = true;
+                        ret = true;
+                    } else {
+                        self.player.invtime = PLAYER_INVINCIBLE_TIME;
                     }
                 }
             }
-        }
-        self.bullets = bullets;
 
-        for i in bullets_to_delete.iter() {
-            if let Some(b) = self.bullets.remove(i) {
-                println!(
-                    "Deleted {} id={}, {} / {}",
-                    b.get_type(),
-                    b.id,
-                    *i,
-                    self.bullets.len()
-                );
-            } else {
-                debug_assert!(false, "All keys must exist in bullets");
-            }
-        }
+            println!("Deleted {} id={} ({})", b.get_type(), i, self.bullets.len());
+
+            false
+        });
+        self.bullets = bullets;
 
         ret
     }

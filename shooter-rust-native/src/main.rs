@@ -361,7 +361,6 @@ fn main() -> Result<(), ShooterError> {
                 // These variables are used in between multiple invocation of this closure.
                 let mut add_tent = |ty: TT, pos: &[f64; 2], state: &mut ShooterState| {
                     let mut ent = Entity::new(
-                        &mut state.id_gen,
                         [
                             pos[0] + 4. * (state.rng.gen() - 0.5),
                             pos[1] + 4. * (state.rng.gen() - 0.5),

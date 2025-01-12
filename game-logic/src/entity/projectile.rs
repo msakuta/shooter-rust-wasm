@@ -15,7 +15,7 @@ use vecmath::{vec2_add, vec2_len, vec2_normalized, vec2_scale, vec2_square_len, 
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use piston_window::*;
 
-use super::{DeathReason, Enemy, Entity, Player, BULLET_SIZE, MISSILE_SPEED};
+use super::{DeathReason, Enemy, Entity, EntityId, EntitySet, Player, BULLET_SIZE, MISSILE_SPEED};
 
 pub struct BulletBase(pub Entity);
 
@@ -34,7 +34,7 @@ pub enum Projectile {
     },
     Missile {
         base: BulletBase,
-        target: u32,
+        target: Option<EntityId<Enemy>>,
         trail: Vec<[f64; 2]>,
     },
 }
@@ -78,10 +78,6 @@ impl Projectile {
         }
     }
 
-    pub fn get_id(&self) -> u32 {
-        self.id
-    }
-
     pub fn get_type(&self) -> &str {
         match &self {
             &Projectile::Bullet(_) | &Projectile::EnemyBullet(_) => "Bullet",
@@ -93,7 +89,7 @@ impl Projectile {
 
     fn animate_player_bullet(
         mut base: &mut BulletBase,
-        enemies: &mut Vec<Enemy>,
+        enemies: &mut EntitySet<Enemy>,
         mut _player: &mut Player,
     ) -> Option<DeathReason> {
         let bbox = Self::get_bb_base(base);
@@ -107,14 +103,14 @@ impl Projectile {
             }
         }
         if let Some(enemy) = spawned_enemy {
-            enemies.push(enemy);
+            enemies.insert(enemy);
         }
         ent.animate()
     }
 
     fn animate_enemy_bullet(
         base: &mut BulletBase,
-        _enemies: &mut Vec<Enemy>,
+        _enemies: &mut EntitySet<Enemy>,
         player: &mut Player,
     ) -> Option<DeathReason> {
         let BulletBase(ref mut ent) = base;
@@ -127,7 +123,7 @@ impl Projectile {
 
     pub fn animate_bullet(
         &mut self,
-        enemies: &mut Vec<Enemy>,
+        enemies: &mut EntitySet<Enemy>,
         player: &mut Player,
     ) -> Option<DeathReason> {
         match self {
@@ -155,18 +151,21 @@ impl Projectile {
                 target,
                 trail,
             } => {
-                if *target == 0 {
-                    let best = enemies.iter_mut().fold((0, 1e5, None), |bestpair, enemy| {
-                        let dist = vec2_len(vec2_sub(base.0.pos, enemy.pos));
-                        if dist < MISSILE_DETECTION_RANGE
-                            && dist < bestpair.1
-                            && enemy.predicted_damage() < enemy.total_health()
-                        {
-                            (enemy.id, dist, Some(enemy))
-                        } else {
-                            bestpair
-                        }
-                    });
+                if target.is_none() {
+                    let best =
+                        enemies
+                            .items_mut()
+                            .fold((None, 1e5, None), |bestpair, (id, enemy)| {
+                                let dist = vec2_len(vec2_sub(base.0.pos, enemy.pos));
+                                if dist < MISSILE_DETECTION_RANGE
+                                    && dist < bestpair.1
+                                    && enemy.predicted_damage() < enemy.total_health()
+                                {
+                                    (Some(id), dist, Some(enemy))
+                                } else {
+                                    bestpair
+                                }
+                            });
                     *target = best.0;
                     if let Some(enemy) = best.2 {
                         enemy.add_predicted_damage(MISSILE_DAMAGE);
@@ -176,7 +175,7 @@ impl Projectile {
                             enemy.predicted_damage()
                         );
                     }
-                } else if let Some(target_enemy) = enemies.iter().find(|e| e.get_id() == *target) {
+                } else if let Some(target_enemy) = target.and_then(|t| enemies.get(t)) {
                     let norm = vec2_normalized(vec2_sub(target_enemy.pos, base.0.pos));
                     let desired_velo = vec2_scale(norm, MISSILE_SPEED);
                     let desired_diff = vec2_sub(desired_velo, base.0.velo);
@@ -199,7 +198,7 @@ impl Projectile {
                         base.0.velo[1] = MISSILE_SPEED * s;
                     }
                 } else {
-                    *target = 0
+                    *target = None;
                 }
                 if MISSILE_TRAIL_LENGTH < trail.len() {
                     trail.remove(0);
@@ -207,7 +206,7 @@ impl Projectile {
                 trail.push(base.0.pos);
                 let res = Self::animate_player_bullet(base, enemies, player);
                 if res.is_some() {
-                    if let Some(target_enemy) = enemies.iter_mut().find(|e| e.get_id() == *target) {
+                    if let Some(target_enemy) = target.and_then(|t| enemies.get_mut(t)) {
                         target_enemy.add_predicted_damage(-MISSILE_DAMAGE);
                         println!(
                             "Reduce predicted damage: {} -> {}",

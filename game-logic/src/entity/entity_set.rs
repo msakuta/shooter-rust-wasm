@@ -23,9 +23,19 @@ pub struct EntitySet<T> {
     v: Vec<EntityEntry<T>>,
 }
 
+impl<T> Default for EntitySet<T> {
+    fn default() -> Self {
+        Self { v: vec![] }
+    }
+}
+
 impl<T> EntitySet<T> {
     pub fn new() -> Self {
         Self { v: vec![] }
+    }
+
+    pub fn clear(&mut self) {
+        self.v.clear();
     }
 
     /// Returns the number of active elements in this EntitySet.
@@ -132,24 +142,24 @@ impl<T> EntitySet<T> {
         })
     }
 
-    // Will we need removal of an element through a shared reference? If so, we need `RefCell<Option<T>>`
-    // instead of `Option<RefCell<T>>`.
-    // pub fn borrow_remove(&self, id: EntityId) -> Option<T> {
-    //     self.v.get(id.id as usize).and_then(|entry| {
-    //         if id.gen == entry.gen {
-    //             entry.payload.borrow_mut().take().map(|v| v.into_inner())
-    //         } else {
-    //             None
-    //         }
-    //     })
-    // }
-
     pub fn retain(&mut self, mut f: impl FnMut(&mut T) -> bool) {
         for entry in &mut self.v {
             let Some(payload) = entry.payload.get_mut().as_mut() else {
                 continue;
             };
             if !f(payload) {
+                entry.payload = RefCell::new(None);
+            }
+        }
+    }
+
+    pub fn retain_id(&mut self, mut f: impl FnMut(EntityId<T>, &mut T) -> bool) {
+        for (i, entry) in self.v.iter_mut().enumerate() {
+            let Some(payload) = entry.payload.get_mut().as_mut() else {
+                continue;
+            };
+            let id = EntityId::new(i as u32, entry.gen);
+            if !f(id, payload) {
                 entry.payload = RefCell::new(None);
             }
         }
@@ -203,5 +213,23 @@ impl<T> EntitySet<T> {
         self.v
             .get(idx)
             .and_then(|entry| RefMutOption::new(&entry.payload))
+    }
+}
+
+/// An inefficient (boxed) iterator for convenicence
+impl<'a, T> IntoIterator for &'a EntitySet<T> {
+    type Item = RefOption<'a, T>;
+    type IntoIter = Box<dyn Iterator<Item = RefOption<'a, T>> + 'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        Box::new(self.iter()) as Box<_>
+    }
+}
+
+/// An inefficient (boxed) mutable iterator for convenicence
+impl<'a, T> IntoIterator for &'a mut EntitySet<T> {
+    type Item = &'a mut T;
+    type IntoIter = Box<dyn Iterator<Item = &'a mut T> + 'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        Box::new(self.iter_mut()) as Box<_>
     }
 }

@@ -23,8 +23,8 @@ use crate::{xor128::Xor128, ShooterState};
 #[cfg(feature = "webgl")]
 use super::draw_tex;
 use super::{
-    bbox_intersects, bounding_box, BulletBase, DeathReason, Entity, Item, Projectile, ENEMY_SIZE,
-    SCREEN_RECT,
+    bbox_intersects, bounding_box, BulletBase, DeathReason, Entity, EntitySet, Item, Projectile,
+    ENEMY_SIZE, SCREEN_RECT,
 };
 
 const JOINT_LENGTH: f64 = 20.;
@@ -48,9 +48,9 @@ impl DerefMut for EnemyBase {
 }
 
 impl EnemyBase {
-    pub fn new(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Self {
+    pub fn new(pos: [f64; 2], velo: [f64; 2]) -> Self {
         Self {
-            base: Entity::new(id_gen, pos, velo).health(64),
+            base: Entity::new(pos, velo).health(64),
             predicted_damage: 0,
         }
     }
@@ -67,10 +67,10 @@ pub struct ShieldedBoss {
 }
 
 impl ShieldedBoss {
-    pub fn new(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Self {
+    pub fn new(pos: [f64; 2], velo: [f64; 2]) -> Self {
         Self {
             base: EnemyBase {
-                base: Entity::new(id_gen, pos, velo).health(64),
+                base: Entity::new(pos, velo).health(64),
                 predicted_damage: 0,
             },
             shield_health: 64,
@@ -118,10 +118,6 @@ impl DerefMut for Enemy {
 }
 
 impl Enemy {
-    pub fn get_id(&self) -> u32 {
-        self.id
-    }
-
     /// Apply damage to this enemy, within specified rectangle area.
     /// The area can be important for patial damages.
     pub fn damage(&mut self, val: i32, rect: &[f64; 4]) -> Option<Enemy> {
@@ -204,8 +200,7 @@ impl Enemy {
 
     fn gen_bullets(
         &mut self,
-        id_gen: &mut u32,
-        bullets: &mut std::collections::HashMap<u32, Projectile>,
+        bullets: &mut EntitySet<Projectile>,
         rng: &mut Xor128,
         create_fn: impl Fn(BulletBase) -> Projectile,
     ) {
@@ -217,38 +212,27 @@ impl Enemy {
             for i in 0..bullet_count {
                 let angle = 2. * PI * i as f64 / bullet_count as f64 + phase_offset;
                 let eb = create_fn(BulletBase(
-                    Entity::new(id_gen, self.pos, vec2_scale([angle.cos(), angle.sin()], 1.))
+                    Entity::new(self.pos, vec2_scale([angle.cos(), angle.sin()], 1.))
                         .rotation(angle as f32),
                 ));
-                bullets.insert(eb.get_id(), eb);
+                bullets.insert(eb);
             }
         }
     }
 
     pub fn animate(&mut self, state: &mut ShooterState) -> Option<DeathReason> {
         if self.is_boss() {
-            self.gen_bullets(
-                &mut state.id_gen,
-                &mut state.bullets,
-                &mut state.rng,
-                Projectile::new_phase,
-            );
+            self.gen_bullets(&mut state.bullets, &mut state.rng, Projectile::new_phase);
         } else if let Enemy::SpiralEnemy(_) = self {
-            self.gen_bullets(
-                &mut state.id_gen,
-                &mut state.bullets,
-                &mut state.rng,
-                Projectile::new_spiral,
-            );
+            self.gen_bullets(&mut state.bullets, &mut state.rng, Projectile::new_spiral);
         } else {
             let x: u32 = state.rng.gen_range(0, 64);
             if x == 0 {
                 let eb = Projectile::EnemyBullet(BulletBase(Entity::new(
-                    &mut state.id_gen,
                     self.pos,
                     [state.rng.gen() - 0.5, state.rng.gen() - 0.5],
                 )));
-                state.bullets.insert(eb.get_id(), eb);
+                state.bullets.insert(eb);
             }
         }
 
@@ -414,23 +398,22 @@ impl Enemy {
         matches!(self, Enemy::Boss(_) | Enemy::ShieldedBoss(_))
     }
 
-    pub fn new_spiral(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Enemy {
-        Enemy::SpiralEnemy(EnemyBase::new(id_gen, pos, velo))
+    pub fn new_spiral(pos: [f64; 2], velo: [f64; 2]) -> Enemy {
+        Enemy::SpiralEnemy(EnemyBase::new(pos, velo))
     }
 
-    pub fn new_centipede(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Enemy {
+    pub fn new_centipede(pos: [f64; 2], velo: [f64; 2]) -> Enemy {
         Enemy::Centipede(CentipedeEnemy {
             // The head is particularly tough
-            base: EnemyBase::new(id_gen, pos, velo).health(32),
+            base: EnemyBase::new(pos, velo).health(32),
             joints: vec![CentipedeJoint(pos, 16); 10],
         })
     }
 
     fn new_centipede_joints(pos: [f64; 2], velo: [f64; 2], joints: Vec<CentipedeJoint>) -> Enemy {
-        let mut dummy = 0;
         Enemy::Centipede(CentipedeEnemy {
             // The head is particularly tough
-            base: EnemyBase::new(&mut dummy, pos, velo).health(32),
+            base: EnemyBase::new(pos, velo).health(32),
             joints,
         })
     }

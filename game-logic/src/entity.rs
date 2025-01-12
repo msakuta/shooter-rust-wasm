@@ -2,8 +2,8 @@ mod enemy;
 mod entity_id;
 mod entity_set;
 mod projectile;
-mod temp_entity;
 mod ref_option;
+mod temp_entity;
 
 use core::f64;
 
@@ -12,8 +12,8 @@ pub use self::{
     entity_id::EntityId,
     entity_set::{EntityEntry, EntitySet},
     projectile::{BulletBase, Projectile},
+    ref_option::{RefMutOption, RefOption},
     temp_entity::{TempEntity, TempEntityType},
-    ref_option::{RefOption, RefMutOption},
 };
 #[cfg(all(not(feature = "webgl"), feature = "piston"))]
 use crate::assets_piston::Assets;
@@ -38,7 +38,6 @@ use web_sys::{WebGlRenderingContext as GL, WebGlTexture};
 
 /// The base structure of all Entities.  Implements common methods.
 pub struct Entity {
-    pub id: u32,
     pub pos: [f64; 2],
     pub velo: [f64; 2],
     pub health: i32,
@@ -74,10 +73,8 @@ where
 }
 
 impl Entity {
-    pub fn new(id_gen: &mut u32, pos: [f64; 2], velo: [f64; 2]) -> Self {
-        *id_gen += 1;
+    pub fn new(pos: [f64; 2], velo: [f64; 2]) -> Self {
         Self {
-            id: *id_gen,
             pos,
             velo,
             health: 1,

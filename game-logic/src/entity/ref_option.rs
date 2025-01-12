@@ -1,4 +1,7 @@
-use std::{cell::{Ref, RefCell, RefMut}, ops::{Deref, DerefMut}};
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    ops::{Deref, DerefMut},
+};
 
 #[derive(Debug)]
 /// A wrapper around Ref<Option> that always has Some.
